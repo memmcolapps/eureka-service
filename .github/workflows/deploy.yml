@@ -21,7 +21,7 @@ jobs:
       - name: Build jar file
         run: mvn clean package -DskipTests
 
-      - name: Copy jar to server
+      - name: Copy JAR to server via SCP
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.HOST }}
