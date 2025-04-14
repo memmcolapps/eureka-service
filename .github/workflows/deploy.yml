@@ -1,0 +1,190 @@
+name: CI/CD Java Jar Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build jar file
+        run: ./mvnw clean package -DskipTests
+
+      - name: Copy jar to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "eureka-service/target/eureka-service-0.0.1-SNAPSHOT.jar"
+          target: "/home/${{ secrets.USERNAME }}/apps/${{ secrets.APP_NAME }}"
+
+      - name: SSH into server and run jar
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p /home/${{ secrets.USERNAME }}/apps/${{ secrets.APP_NAME }}
+            cd /home/${{ secrets.USERNAME }}/apps/${{ secrets.APP_NAME }}
+            pkill -f '${{ secrets.APP_NAME }}.jar' || true
+            nohup java -jar eureka-service-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+
+
+##
+#name: CI/CD Docker Deploy
+#
+#on:
+#  push:
+#    branches: [ "main" ]
+#
+#jobs:
+#  deploy:
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - name: Checkout source
+#        uses: actions/checkout@v3
+#
+#      - name: Set up Java
+#        uses: actions/setup-java@v3
+#        with:
+#          java-version: '17'
+#          distribution: 'temurin'
+#
+#      - name: Build jar file
+#        run: ./mvnw clean package -DskipTests
+#
+#      - name: Copy jar and Dockerfile to server
+#        uses: appleboy/scp-action@v0.1.4
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.USERNAME }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          source: "eureka-service/target/eureka-service-0.0.1-SNAPSHOT.jar,Dockerfile"
+#          target: "/home/memmcol/${{ secrets.APP_NAME }}"
+#
+#      - name: SSH into server and deploy
+#        uses: appleboy/ssh-action@v1.0.0
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.USERNAME }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          script: |
+#            cd /home/memmcol/${{ secrets.APP_NAME }}
+#            docker stop ${{ secrets.APP_NAME }} || true
+#            docker rm ${{ secrets.APP_NAME }} || true
+#            docker build -t ${{ secrets.APP_NAME }} .
+#            docker run -d --name ${{ secrets.APP_NAME }} -p ${{ secrets.PORT }}:${{ secrets.PORT }} ${{ secrets.APP_NAME }}
+#
+
+
+#name: Deploy Java Service
+#
+#on:
+#  workflow_dispatch:
+#    inputs:
+#      service_name:
+#        description: 'Name of the service (e.g., eureka-service)'
+#        required: true
+#      jar_name:
+#        description: 'JAR file name (e.g., eureka-service-0.0.1-SNAPSHOT.jar)'
+#        required: true
+#
+#jobs:
+#  deploy:
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v3
+#
+#      - name: Set up Java
+#        uses: actions/setup-java@v3
+#        with:
+#          java-version: '17'
+#          distribution: 'temurin'
+#
+#      - name: Build service
+#        run: ./mvnw clean package -DskipTests -pl ${{ github.event.inputs.service_name }}
+#
+#      - name: Upload jar to server
+#        uses: appleboy/scp-action@v0.1.4
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.USERNAME }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          source: "${{ github.event.inputs.service_name }}/target/${{ github.event.inputs.jar_name }}"
+#          target: "/home/${{ secrets.USERNAME }}/${{ github.event.inputs.service_name }}"
+#
+#      - name: Restart service on server
+#        uses: appleboy/ssh-action@v1.0.0
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.USERNAME }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          script: |
+#            pkill -f '${{ github.event.inputs.jar_name }}' || true
+#            nohup java -jar /home/${{ secrets.USERNAME }}/${{ github.event.inputs.service_name }}/${{ github.event.inputs.jar_name }} > /home/${{ secrets.USERNAME }}/${{ github.event.inputs.service_name }}/log.txt 2>&1 &
+
+##--------------------------------
+
+## with docker
+#name: Docker Deploy Java Service
+#
+#on:
+#  push:
+#    branches: [ "main" ]
+#
+#jobs:
+#  build-and-deploy:
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v3
+#
+#      - name: Set up Java
+#        uses: actions/setup-java@v3
+#        with:
+#          java-version: '17'
+#          distribution: 'temurin'
+#
+#      - name: Build the JAR
+#        run: ./mvnw clean package -DskipTests -pl eureka-service
+#
+#      - name: Log in to Docker Hub
+#        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+#
+#      - name: Build Docker image
+#        run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/eureka-service ./eureka-service
+#
+#      - name: Push Docker image
+#        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/eureka-service
+#
+#      - name: SSH and run Docker container
+#        uses: appleboy/ssh-action@v1.0.0
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.USERNAME }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          script: |
+#            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/eureka-service
+#            docker stop eureka || true
+#            docker rm eureka || true
+#            docker run -d --name eureka -p 8761:8761 ${{ secrets.DOCKERHUB_USERNAME }}/eureka-service
+
+##------------------------------------
+
