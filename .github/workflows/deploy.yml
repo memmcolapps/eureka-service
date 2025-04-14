@@ -1,4 +1,4 @@
-name: CI/CD Jar Deployment
+name: CI/CD Deploy Java Service (No Docker Build)
 
 on:
   push:
@@ -18,17 +18,21 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Build jar file
+      - name: Grant execute permission to mvnw
+        run: chmod +x ./mvnw
+
+      - name: Build with Maven
         run: mvn clean package -DskipTests
 
-      - name: Copy JAR to server via SCP
+      - name: Upload JAR via SCP
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "eureka-service/target/eureka-service-0.0.1-SNAPSHOT.jar"
-          target: "/home/memmcol/eureka-service/"
+          source: "./target/eureka-service-0.0.1-SNAPSHOT.jar"
+          target: "/home/memmcol/eureka-service"
+          strip_components: 2
 
       - name: Run app on server
         uses: appleboy/ssh-action@v1.0.0
@@ -37,9 +41,56 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            pkill -f 'java -jar' || true
-            nohup java -jar /home/memmcol/eureka-service/eureka-service-0.0.1-SNAPSHOT.jar > /home/memmcol/eureka-service/log.txt 2>&1 &
+            pkill -f 'eureka-service-0.0.1-SNAPSHOT.jar' || true
+            nohup java -jar /home/memmcol/eureka-service/eureka-service-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
 
+
+
+
+
+
+#name: CI/CD Jar Deployment
+#
+#on:
+#  push:
+#    branches: [ "main" ]
+#
+#jobs:
+#  deploy:
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - name: Checkout source
+#        uses: actions/checkout@v3
+#
+#      - name: Set up Java
+#        uses: actions/setup-java@v3
+#        with:
+#          java-version: '17'
+#          distribution: 'temurin'
+#
+#      - name: Build jar file
+#        run: mvn clean package -DskipTests
+#
+#      - name: Copy JAR to server via SCP
+#        uses: appleboy/scp-action@v0.1.4
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.USERNAME }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          source: "eureka-service/target/eureka-service-0.0.1-SNAPSHOT.jar"
+#          target: "/home/memmcol/eureka-service/"
+#
+#      - name: Run app on server
+#        uses: appleboy/ssh-action@v1.0.0
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.USERNAME }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          script: |
+#            pkill -f 'java -jar' || true
+#            nohup java -jar /home/memmcol/eureka-service/eureka-service-0.0.1-SNAPSHOT.jar > /home/memmcol/eureka-service/log.txt 2>&1 &
+#
 
 
 #name: CI/CD Java Jar Deploy
