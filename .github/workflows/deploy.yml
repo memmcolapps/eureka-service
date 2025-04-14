@@ -19,7 +19,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Build jar file
-        run: ./mvnw clean package -DskipTests
+        run: ./mvn clean package -DskipTests
 
       - name: Copy jar to server
         uses: appleboy/scp-action@v0.1.4
