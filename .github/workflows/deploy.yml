@@ -1,41 +1,38 @@
-name: CI/CD Deploy Java Service (No Docker Build)
+name: Deploy Java App
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
-          java-version: '17'
           distribution: 'temurin'
-
-      - name: Grant execute permission to mvnw
-        run: chmod +x ./mvnw
+          java-version: '17'  # Change to your version if needed
 
       - name: Build with Maven
-        run: mvn clean package -DskipTests
+        run: mvn clean package -DskipTests  # Use ./gradlew build if using Gradle
 
-      - name: Upload JAR via SCP
-        uses: appleboy/scp-action@v0.1.4
+      - name: Copy JAR to remote server
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "./target/eureka-service-0.0.1-SNAPSHOT.jar"
           target: "/home/memmcol/eureka-service"
-          strip_components: 2
 
-      - name: Run app on server
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Run app on remote server
+        uses: appleboy/ssh-action@v0.1.8
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
@@ -43,6 +40,54 @@ jobs:
           script: |
             pkill -f 'eureka-service-0.0.1-SNAPSHOT.jar' || true 
             nohup java -jar /home/memmcol/eureka-service/eureka-service-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+
+
+#
+#name: CI/CD Deploy Java Service (No Docker Build)
+#
+#on:
+#  push:
+#    branches: [ "main" ]
+#
+#jobs:
+#  deploy:
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - name: Checkout source
+#        uses: actions/checkout@v3
+#
+#      - name: Set up Java
+#        uses: actions/setup-java@v3
+#        with:
+#          java-version: '17'
+#          distribution: 'temurin'
+#
+#      - name: Grant execute permission to mvnw
+#        run: chmod +x ./mvnw
+#
+#      - name: Build with Maven
+#        run: mvn clean package -DskipTests
+#
+#      - name: Upload JAR via SCP
+#        uses: appleboy/scp-action@v0.1.4
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.USERNAME }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          source: "./target/eureka-service-0.0.1-SNAPSHOT.jar"
+#          target: "/home/memmcol/eureka-service"
+#          strip_components: 2
+#
+#      - name: Run app on server
+#        uses: appleboy/ssh-action@v1.0.0
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.USERNAME }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          script: |
+#            pkill -f 'eureka-service-0.0.1-SNAPSHOT.jar' || true
+#            nohup java -jar /home/memmcol/eureka-service/eureka-service-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
 
 
 
