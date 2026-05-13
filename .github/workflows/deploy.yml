@@ -89,7 +89,7 @@ jobs:
 
           scp -o StrictHostKeyChecking=no \
             target/*.jar \
-            ${{ secrets.PROD_SERVER_HOST }}@${{ secrets.PROD_SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
+            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
 
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << EOF
