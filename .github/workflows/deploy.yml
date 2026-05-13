@@ -50,8 +50,8 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} << EOF
-              sudo mkdir -p /opt/java-webservices
-              sudo chown -R \$USER:\$USER /opt/java-webservices
+              mkdir -p /opt/java-webservices
+              chown -R \$USER:\$USER /opt/java-webservices
               pkill -f 'eureka-service.jar' || true
           EOF
 
@@ -81,13 +81,15 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << EOF
-              sudo mkdir -p /opt/java-webservices
-              sudo chown -R \$USER:\$USER /opt/java-webservices
+              mkdir -p /opt/java-webservices
+              chown -R \$USER:\$USER /opt/java-webservices
+
               pkill -f 'eureka-service.jar' || true
           EOF
 
           scp -o StrictHostKeyChecking=no target/*.jar \
-            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
+
+            ${{ secrets.PROD_SERVER_HOST }}@${{ secrets.PROD_SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
 
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << EOF
