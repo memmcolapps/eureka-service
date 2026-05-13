@@ -80,17 +80,17 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << EOF
+            ${{ secrets.PROD_SERVER_HOST }}@${{ secrets.PROD_SERVER_HOST }} << EOF
               sudo mkdir -p /opt/java-webservices
               sudo chown -R \$USER:\$USER /opt/java-webservices
               pkill -f 'eureka-service.jar' || true
           EOF
 
           scp -o StrictHostKeyChecking=no target/*.jar \
-            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
+            ${{ secrets.PROD_SERVER_HOST }}@${{ secrets.PROD_SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
 
           ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << EOF
+            ${{ secrets.PROD_SERVER_HOST }}@${{ secrets.PROD_SERVER_HOST }} << EOF
               nohup java -jar \
                 -Dspring.profiles.active=prod \
                 /opt/java-webservices/eureka-service.jar \
