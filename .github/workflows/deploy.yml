@@ -73,14 +73,17 @@ jobs:
 
           echo "Stopping app safely..."
           ssh -o StrictHostKeyChecking=no $SERVER "
-            set +e
-            PID=\$(pgrep -f eureka-service.jar)
+            echo 'Stopping app safely...'
+          
+            PID=\$(ps -ef | grep eureka-service.jar | grep -v grep | awk '{print \$2}')
+          
             if [ -n \"\$PID\" ]; then
-              kill -9 \$PID 2>/dev/null
-              echo 'Process stopped'
+              echo \"Killing PID: \$PID\"
+              kill -9 \$PID 2>/dev/null || true
             else
-              echo 'No running process'
+              echo 'No running process found'
             fi
+          
             exit 0
           "
 
@@ -121,15 +124,18 @@ jobs:
           ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
 
           echo "Stopping app safely..."
-          ssh -o StrictHostKeyChecking=no $SERVER "
-            set +e
-            PID=\$(pgrep -f eureka-service.jar)
+           ssh -o StrictHostKeyChecking=no $SERVER "
+            echo 'Stopping app safely...'
+          
+            PID=\$(ps -ef | grep eureka-service.jar | grep -v grep | awk '{print \$2}')
+          
             if [ -n \"\$PID\" ]; then
-              kill -9 \$PID 2>/dev/null
-              echo 'Process stopped'
+              echo \"Killing PID: \$PID\"
+              kill -9 \$PID 2>/dev/null || true
             else
-              echo 'No running process'
+              echo 'No running process found'
             fi
+          
             exit 0
           "
 
