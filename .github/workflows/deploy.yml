@@ -34,6 +34,24 @@ jobs:
           chmod +x ./mvnw
           ./mvnw clean package -DskipTests
 
+      # ==========================================
+      # Verify JAR generated
+      # ==========================================
+      - name: Verify JAR
+        run: |
+          echo "Listing target directory..."
+          ls -lah target/
+
+      # ==========================================
+      # Get JAR file name
+      # ==========================================
+      - name: Set JAR file variable
+        id: jar
+        run: |
+          JAR_FILE=$(find target -name "*.jar" ! -name "*original*.jar" | head -n 1)
+          echo "JAR_FILE=$JAR_FILE" >> $GITHUB_ENV
+          echo "Using JAR: $JAR_FILE"
+
       # =====================================================
       # STAGING DEPLOYMENT (branch: staging)
       # =====================================================
@@ -46,22 +64,41 @@ jobs:
       - name: Deploy to Staging Server
         if: github.ref == 'refs/heads/staging'
         run: |
+          echo "Creating deployment directory..."
+          
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} << EOF
               sudo mkdir -p /opt/java-webservices
               sudo chown -R \$USER:\$USER /opt/java-webservices
               pkill -f 'eureka-service.jar' || true
           EOF
+          
+          echo "Copying JAR to staging server..."
 
-          scp -o StrictHostKeyChecking=no target/*.jar \
+          scp -o StrictHostKeyChecking=no \
+            "$JAR_FILE" \
             ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
+          
+          echo "Verifying copied file..."
 
           ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} << EOF
-              nohup java -jar \
+            ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} \
+            "ls -lah /opt/java-webservices/"
+
+          echo "Starting Spring Boot application..."
+          
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} << 'EOF'
+              nohup java \
                 -Dspring.profiles.active=staging \
-                /opt/java-webservices/eureka-service.jar \
+                -jar /opt/java-webservices/eureka-service.jar \
                 > /opt/java-webservices/eureka-staging.log 2>&1 &
+          
+              sleep 5
+  
+              echo "Application started."
+
+              ps -ef | grep eureka-service.jar | grep -v grep || true
           EOF
 
       # =====================================================
@@ -77,22 +114,42 @@ jobs:
       - name: Deploy to Production Server
         if: github.ref == 'refs/heads/main'
         run: |
+          
+          echo "Creating deployment directory..."
+          
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << EOF
               sudo mkdir -p /opt/java-webservices
               sudo chown -R \$USER:\$USER /opt/java-webservices
               pkill -f 'eureka-service.jar' || true
           EOF
+          
+          echo "Copying JAR to production server..."
 
-          scp -o StrictHostKeyChecking=no target/*.jar \
+           scp -o StrictHostKeyChecking=no \
+            "$JAR_FILE" \
             ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
 
+          echo "Verifying copied file..."
+          
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} \
+            "ls -lah /opt/java-webservices/"
+
+          echo "Starting Spring Boot application..."
+          
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << EOF
-              nohup java -jar \
+              nohup java \
                 -Dspring.profiles.active=prod \
-                /opt/java-webservices/eureka-service.jar \
+                -jar /opt/java-webservices/eureka-service.jar \
                 > /opt/java-webservices/eureka-prod.log 2>&1 &
+          
+              sleep 5
+
+              echo "Application started."
+
+              ps -ef | grep eureka-service.jar | grep -v grep || true
           EOF
 
 
