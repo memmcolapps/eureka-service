@@ -72,7 +72,12 @@ jobs:
           ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
           
           echo "Stopping app..."
-          ssh -o StrictHostKeyChecking=no $SERVER "pkill -f eureka-service.jar || true"
+          ssh -o StrictHostKeyChecking=no $SERVER "
+            PID=\$(pgrep -f eureka-service.jar || true)
+            if [ ! -z \"\$PID\" ]; then
+              kill -9 \$PID || true
+            fi
+          "
           
           echo "Uploading JAR..."
           rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
@@ -111,7 +116,12 @@ jobs:
           ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
 
           echo "Stopping app..."
-          ssh -o StrictHostKeyChecking=no $SERVER "pkill -f eureka-service.jar || true"
+          ssh -o StrictHostKeyChecking=no $SERVER "
+            PID=\$(pgrep -f eureka-service.jar || true)
+            if [ ! -z \"\$PID\" ]; then
+              kill -9 \$PID || true
+            fi
+          "
 
           echo "Uploading JAR..."
           rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
