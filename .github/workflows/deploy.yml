@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       # =====================
-      # Java Setup (with Maven cache)
+      # Java Setup
       # =====================
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -73,7 +73,14 @@ jobs:
 
           echo "Stopping app safely..."
           ssh -o StrictHostKeyChecking=no $SERVER "
-            pkill -f eureka-service.jar || echo 'No running process'
+            set +e
+            PID=\$(pgrep -f eureka-service.jar)
+            if [ -n \"\$PID\" ]; then
+              kill -9 \$PID 2>/dev/null
+              echo 'Process stopped'
+            else
+              echo 'No running process'
+            fi
             exit 0
           "
 
@@ -115,7 +122,14 @@ jobs:
 
           echo "Stopping app safely..."
           ssh -o StrictHostKeyChecking=no $SERVER "
-            pkill -f eureka-service.jar || echo 'No running process'
+            set +e
+            PID=\$(pgrep -f eureka-service.jar)
+            if [ -n \"\$PID\" ]; then
+              kill -9 \$PID 2>/dev/null
+              echo 'Process stopped'
+            else
+              echo 'No running process'
+            fi
             exit 0
           "
 
