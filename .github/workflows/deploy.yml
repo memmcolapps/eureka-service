@@ -15,7 +15,7 @@ jobs:
       # Checkout source code
       # =====================
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # =====================
       # Setup Java
@@ -31,31 +31,43 @@ jobs:
       # =====================
       - name: Build with Maven
         run: |
-          chmod +x ./mvnw
+          chmod +x mvnw
           ./mvnw clean package -DskipTests
 
-      # ==========================================
-      # Verify JAR generated
-      # ==========================================
-      - name: Verify JAR
-        run: |
-          echo "Listing target directory..."
-          ls -lah target/
+      # =====================
+      # Show build output
+      # =====================
+      - name: List target directory
+        run: ls -lah target/
 
-      # ==========================================
-      # Get JAR file name
-      # ==========================================
-      - name: Set JAR file variable
-        id: jar
+      # =====================
+      # Get JAR file safely
+      # =====================
+      - name: Resolve JAR file
         run: |
           JAR_FILE=$(find target -name "*.jar" ! -name "*original*.jar" | head -n 1)
+
+          echo "Found JAR: $JAR_FILE"
+
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: No JAR found in target/"
+            exit 1
+          fi
+
           echo "JAR_FILE=$JAR_FILE" >> $GITHUB_ENV
+
+      # =====================
+      # DEBUG JAR BEFORE DEPLOY
+      # =====================
+      - name: Debug JAR
+        run: |
           echo "Using JAR: $JAR_FILE"
+          ls -lah "$JAR_FILE"
 
       # =====================================================
-      # STAGING DEPLOYMENT (branch: staging)
+      # STAGING DEPLOYMENT
       # =====================================================
-      - name: Setup SSH Agent (Staging)
+      - name: Setup SSH (Staging)
         if: github.ref == 'refs/heads/staging'
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -64,48 +76,44 @@ jobs:
       - name: Deploy to Staging Server
         if: github.ref == 'refs/heads/staging'
         run: |
-          echo "Creating deployment directory..."
-          
+
+          echo "Preparing server..."
+
           ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} << EOF
-              sudo mkdir -p /opt/java-webservices
-              sudo chown -R \$USER:\$USER /opt/java-webservices
-              pkill -f 'eureka-service.jar' || true
-          EOF
-          
-          echo "Copying JAR to staging server..."
+            ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} \
+            "sudo mkdir -p /opt/java-webservices && sudo chmod 777 /opt/java-webservices && pkill -f eureka-service.jar || true"
+
+          echo "Uploading JAR..."
 
           scp -o StrictHostKeyChecking=no \
             "$JAR_FILE" \
             ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
-          
-          echo "Verifying copied file..."
+
+          echo "Verifying upload..."
 
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} \
-            "ls -lah /opt/java-webservices/"
+            "ls -lah /opt/java-webservices"
 
-          echo "Starting Spring Boot application..."
-          
+          echo "Starting application..."
+
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} << 'EOF'
               nohup java \
                 -Dspring.profiles.active=staging \
                 -jar /opt/java-webservices/eureka-service.jar \
                 > /opt/java-webservices/eureka-staging.log 2>&1 &
-          
-              sleep 5
-  
-              echo "Application started."
 
+              sleep 3
+
+              echo "Running process:"
               ps -ef | grep eureka-service.jar | grep -v grep || true
           EOF
 
       # =====================================================
-      # PRODUCTION DEPLOYMENT (branch: main)
-      # secrets.PROD_SSH_PRIVATE_KEY
+      # PRODUCTION DEPLOYMENT
       # =====================================================
-      - name: Setup SSH Agent (Production)
+      - name: Setup SSH (Production)
         if: github.ref == 'refs/heads/main'
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -114,45 +122,39 @@ jobs:
       - name: Deploy to Production Server
         if: github.ref == 'refs/heads/main'
         run: |
-          
-          echo "Creating deployment directory..."
-          
-          ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << EOF
-              sudo mkdir -p /opt/java-webservices
-              sudo chown -R \$USER:\$USER /opt/java-webservices
-              pkill -f 'eureka-service.jar' || true
-          EOF
-          
-          echo "Copying JAR to production server..."
 
-           scp -o StrictHostKeyChecking=no \
+          echo "Preparing server..."
+
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} \
+            "sudo mkdir -p /opt/java-webservices && sudo chmod 777 /opt/java-webservices && pkill -f eureka-service.jar || true"
+
+          echo "Uploading JAR..."
+
+          scp -o StrictHostKeyChecking=no \
             "$JAR_FILE" \
             ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }}:/opt/java-webservices/eureka-service.jar
 
-          echo "Verifying copied file..."
-          
+          echo "Verifying upload..."
+
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} \
-            "ls -lah /opt/java-webservices/"
+            "ls -lah /opt/java-webservices"
 
-          echo "Starting Spring Boot application..."
-          
+          echo "Starting application..."
+
           ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << EOF
+            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << 'EOF'
               nohup java \
                 -Dspring.profiles.active=prod \
                 -jar /opt/java-webservices/eureka-service.jar \
                 > /opt/java-webservices/eureka-prod.log 2>&1 &
-          
-              sleep 5
 
-              echo "Application started."
+              sleep 3
 
+              echo "Running process:"
               ps -ef | grep eureka-service.jar | grep -v grep || true
           EOF
-
-
 #
 #on:
 #  push:
