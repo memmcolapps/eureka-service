@@ -67,24 +67,24 @@ jobs:
         run: |
           SERVER="${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }}"
           REMOTE_PATH="/opt/java-webservices/eureka-service.jar"
-
+          
           echo "Creating remote directory..."
-          ssh $SERVER "mkdir -p /opt/java-webservices"
-
+          ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
+          
           echo "Stopping app..."
-          ssh $SERVER "pkill -f eureka-service.jar || true"
-
-          echo "Uploading JAR (rsync fast mode)..."
-          rsync -az --delete \
+          ssh -o StrictHostKeyChecking=no $SERVER "pkill -f eureka-service.jar || true"
+          
+          echo "Uploading JAR..."
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
             "$JAR_FILE" \
             $SERVER:$REMOTE_PATH
-
+          
           echo "Starting app..."
-          ssh $SERVER "
+          ssh -o StrictHostKeyChecking=no $SERVER "
             nohup java -Dspring.profiles.active=staging \
             -jar $REMOTE_PATH \
             > /opt/java-webservices/eureka-staging.log 2>&1 &
-
+          
             sleep 3
             pgrep -f eureka-service.jar || true
           "
@@ -108,18 +108,18 @@ jobs:
           REMOTE_PATH="/opt/java-webservices/eureka-service.jar"
 
           echo "Creating remote directory..."
-          ssh $SERVER "mkdir -p /opt/java-webservices"
+          ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
 
           echo "Stopping app..."
-          ssh $SERVER "pkill -f eureka-service.jar || true"
+          ssh -o StrictHostKeyChecking=no $SERVER "pkill -f eureka-service.jar || true"
 
           echo "Uploading JAR..."
-          rsync -az --delete \
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
             "$JAR_FILE" \
             $SERVER:$REMOTE_PATH
 
           echo "Starting app..."
-          ssh $SERVER "
+          ssh -o StrictHostKeyChecking=no $SERVER "
             nohup java -Dspring.profiles.active=prod \
             -jar $REMOTE_PATH \
             > /opt/java-webservices/eureka-prod.log 2>&1 &
