@@ -216,44 +216,76 @@ jobs:
             'powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path C:\java-webservices | Out-Null"'
 
           echo "Creating deployment script..."
-          cat > deploy.ps1 <<'EOF'
-          $process = Get-CimInstance Win32_Process |
-              Where-Object { $_.CommandLine -like "*eureka-service.jar*" }
+                    cat > deploy.ps1 <<'EOF'
+          $ErrorActionPreference = "Stop"
 
-          if ($null -ne $process) {
-              Stop-Process -Id $process.ProcessId -Force
-              Start-Sleep -Seconds 2
+          $jarPath = "C:\java-webservices\eureka-service.jar"
+          $logFile = "C:\java-webservices\eureka.log"
+          $errorFile = "C:\java-webservices\eureka-error.log"
+
+          Write-Host "Stopping existing application..."
+
+          Get-CimInstance Win32_Process |
+              Where-Object { $_.CommandLine -like "*eureka-service.jar*" } |
+              ForEach-Object {
+                  Stop-Process -Id $_.ProcessId -Force
+              }
+
+          Start-Sleep -Seconds 2
+
+          if (!(Test-Path $jarPath)) {
+              throw "JAR file not found: $jarPath"
           }
 
-          Copy-Item "C:\java-webservices\eureka-service.jar" "C:\java-webservices\eureka-service.jar" -Force
+          $java = (Get-Command java).Source
 
-          Start-Process java `
+          Write-Host "Java executable: $java"
+
+          Write-Host "Starting application..."
+
+          $proc = Start-Process `
+              -FilePath $java `
+              -WorkingDirectory "C:\java-webservices" `
               -ArgumentList @(
                   "-Dspring.profiles.active=prod",
                   "-jar",
-                  "C:\java-webservices\eureka-service.jar"
+                  $jarPath
               ) `
-              -RedirectStandardOutput "C:\java-webservices\eureka.log" `
-              -RedirectStandardError "C:\java-webservices\eureka-error.log" `
-              -WindowStyle Hidden
+              -RedirectStandardOutput $logFile `
+              -RedirectStandardError $errorFile `
+              -PassThru
 
-          Start-Sleep -Seconds 5
+          Start-Sleep -Seconds 10
 
-          if (!(Get-Process java -ErrorAction SilentlyContinue)) {
-              Write-Error "Java process failed to start."
+          $running = Get-CimInstance Win32_Process |
+              Where-Object { $_.CommandLine -like "*eureka-service.jar*" }
 
-              if (Test-Path "C:\java-webservices\eureka.log") {
-                  Get-Content "C:\java-webservices\eureka.log"
+          if ($null -eq $running) {
+
+              Write-Host ""
+              Write-Host "=========== APPLICATION FAILED TO START ==========="
+
+              if (Test-Path $logFile) {
+                  Write-Host ""
+                  Write-Host "=========== STDOUT ==========="
+                  Get-Content $logFile
               }
 
-              if (Test-Path "C:\java-webservices\eureka-error.log") {
-                  Get-Content "C:\java-webservices\eureka-error.log"
+              if (Test-Path $errorFile) {
+                  Write-Host ""
+                  Write-Host "=========== STDERR ==========="
+                  Get-Content $errorFile
               }
 
               exit 1
           }
 
-          Write-Host "Application started successfully."
+          Write-Host ""
+          Write-Host "=========== APPLICATION STARTED SUCCESSFULLY ==========="
+
+          Get-CimInstance Win32_Process |
+              Where-Object { $_.CommandLine -like "*eureka-service.jar*" }
+
           EOF
 
           echo "Uploading JAR..."
@@ -267,8 +299,8 @@ jobs:
             "$SERVER:C:/java-webservices/deploy.ps1"
 
           echo "Executing deployment..."
-          ssh -o StrictHostKeyChecking=no $SERVER \
-            'powershell -ExecutionPolicy Bypass -File C:\java-webservices\deploy.ps1'
+          ssh -tt -o StrictHostKeyChecking=no $SERVER \
+            'powershell -NoProfile -ExecutionPolicy Bypass -File C:\java-webservices\deploy.ps1'
 
           echo "Deployment completed."
   
