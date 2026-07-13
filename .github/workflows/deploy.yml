@@ -204,44 +204,65 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.WINDOW_SSH_PRIVATE_KEY }}
 
-          # =====================
+      # =====================
       # Deploy
       # =====================
       - name: Deploy to Windows
         run: |
           SERVER="${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}"
-
+          
           echo "Creating deployment directory..."
+          
           ssh -o StrictHostKeyChecking=no $SERVER \
             'powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path C:\java-webservices | Out-Null"'
-
+          
           echo "Creating deployment script..."
-                    cat > deploy.ps1 <<'EOF'
+          
+          cat > deploy.ps1 <<'EOF'
           $ErrorActionPreference = "Stop"
-
+          
           $jarPath = "C:\java-webservices\eureka-service.jar"
-          $logFile = "C:\java-webservices\eureka.log"
-          $errorFile = "C:\java-webservices\eureka-error.log"
-
-          Write-Host "Stopping existing application..."
-
-          Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
-
-          Start-Sleep -Seconds 2
-
-          if (!(Test-Path $jarPath)) {
-              throw "JAR file not found: $jarPath"
+          $workingDir = "C:\java-webservices"
+          
+          $logFile = "$workingDir\eureka.log"
+          $errorFile = "$workingDir\eureka-error.log"
+          
+          $appPort = 8761
+          
+          Write-Host "Stopping existing Eureka..."
+          
+          Get-CimInstance Win32_Process |
+          Where-Object {
+              $_.Name -match "^java(.exe)?$" -and
+              $_.CommandLine -like "*eureka-service.jar*"
+          } |
+          ForEach-Object {
+              Stop-Process -Id $_.ProcessId -Force
           }
-
+          
+          Start-Sleep -Seconds 3
+          
+          if (!(Test-Path $jarPath)) {
+              throw "JAR not found: $jarPath"
+          }
+          
           $java = (Get-Command java).Source
-
-          Write-Host "Java executable: $java"
-
+          
+          Write-Host ""
+          Write-Host "Java executable:"
+          Write-Host $java
+          
+          & $java -version
+          
+          Remove-Item $logFile -ErrorAction Ignore
+          Remove-Item $errorFile -ErrorAction Ignore
+          
+          Write-Host ""
           Write-Host "Starting application..."
-
+          
           $proc = Start-Process `
               -FilePath $java `
-              -WorkingDirectory "C:\java-webservices" `
+              -WorkingDirectory $workingDir `
               -ArgumentList @(
                   "-Dspring.profiles.active=prod",
                   "-jar",
@@ -250,58 +271,101 @@ jobs:
               -RedirectStandardOutput $logFile `
               -RedirectStandardError $errorFile `
               -PassThru
-
-          Start-Sleep -Seconds 10
-  
-          if (Get-Process -Id $proc.Id -ErrorAction SilentlyContinue) {
           
-            Write-Host ""
-            Write-Host "======================================="
-            Write-Host "Application started successfully"
-            Write-Host "PID : $($proc.Id)"
-            Write-Host "======================================="
+          Write-Host "PID: $($proc.Id)"
           
+          Start-Sleep -Seconds 20
+          
+          $proc.Refresh()
+          
+          if ($proc.HasExited) {
+          
+              Write-Host ""
+              Write-Host "Application exited."
+              Write-Host "Exit Code: $($proc.ExitCode)"
+          
+              if (Test-Path $logFile) {
+                  Write-Host ""
+                  Write-Host "===== STDOUT ====="
+                  Get-Content $logFile -Tail 100
+              }
+          
+              if (Test-Path $errorFile) {
+                  Write-Host ""
+                  Write-Host "===== STDERR ====="
+                  Get-Content $errorFile -Tail 100
+              }
+          
+              exit 1
           }
-          else {
           
           Write-Host ""
-          Write-Host "======================================="
-          Write-Host "Application failed to start"
-          Write-Host "======================================="
+          Write-Host "Checking application port..."
           
-          if (Test-Path $logFile) {
+          $listener = Get-NetTCPConnection `
+              -State Listen `
+              -LocalPort $appPort `
+              -ErrorAction SilentlyContinue
+          
+          if ($null -eq $listener) {
+          
               Write-Host ""
-              Write-Host "========== STDOUT =========="
-              Get-Content $logFile
+              Write-Host "Application is running but port $appPort is not listening."
+          
+              if (Test-Path $logFile) {
+                  Write-Host ""
+                  Get-Content $logFile -Tail 100
+              }
+          
+              if (Test-Path $errorFile) {
+                  Write-Host ""
+                  Get-Content $errorFile -Tail 100
+              }
+          
+              exit 1
           }
           
-          if (Test-Path $errorFile) {
-            Write-Host ""
-            Write-Host "========== STDERR =========="
-            Get-Content $errorFile
-          }
-            
-            exit 1
-          }
-
+          Write-Host ""
+          Write-Host "===================================="
+          Write-Host "Application started successfully"
+          Write-Host "PID : $($proc.Id)"
+          Write-Host "Port: $appPort"
+          Write-Host "===================================="
           EOF
-
+          
           echo "Uploading JAR..."
+          
           scp -o StrictHostKeyChecking=no \
             "$JAR_FILE" \
             "$SERVER:C:/java-webservices/eureka-service.jar"
-
+          
           echo "Uploading deployment script..."
+          
           scp -o StrictHostKeyChecking=no \
             deploy.ps1 \
             "$SERVER:C:/java-webservices/deploy.ps1"
-
+          
           echo "Executing deployment..."
+          
           ssh -tt -o StrictHostKeyChecking=no $SERVER \
             'powershell -NoProfile -ExecutionPolicy Bypass -File C:\java-webservices\deploy.ps1'
-
+          
+          echo "Fetching logs..."
+          
+          ssh -o StrictHostKeyChecking=no $SERVER \
+            'powershell -NoProfile -Command "
+              if (Test-Path C:\java-webservices\eureka.log) {
+                Write-Host \"===== STDOUT =====\"
+                Get-Content C:\java-webservices\eureka.log -Tail 50
+              }
+          
+              if (Test-Path C:\java-webservices\eureka-error.log) {
+                Write-Host \"===== STDERR =====\"
+                Get-Content C:\java-webservices\eureka-error.log -Tail 50
+              }
+            "'
+          
           echo "Deployment completed."
-  
 
 
 #  deploy-window:
