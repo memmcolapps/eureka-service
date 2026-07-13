@@ -225,11 +225,7 @@ jobs:
 
           Write-Host "Stopping existing application..."
 
-          Get-CimInstance Win32_Process |
-              Where-Object { $_.CommandLine -like "*eureka-service.jar*" } |
-              ForEach-Object {
-                  Stop-Process -Id $_.ProcessId -Force
-              }
+          Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
 
           Start-Sleep -Seconds 2
 
@@ -256,35 +252,37 @@ jobs:
               -PassThru
 
           Start-Sleep -Seconds 10
-
-          $running = Get-CimInstance Win32_Process |
-              Where-Object { $_.CommandLine -like "*eureka-service.jar*" }
-
-          if ($null -eq $running) {
-
-              Write-Host ""
-              Write-Host "=========== APPLICATION FAILED TO START ==========="
-
-              if (Test-Path $logFile) {
-                  Write-Host ""
-                  Write-Host "=========== STDOUT ==========="
-                  Get-Content $logFile
-              }
-
-              if (Test-Path $errorFile) {
-                  Write-Host ""
-                  Write-Host "=========== STDERR ==========="
-                  Get-Content $errorFile
-              }
-
-              exit 1
+  
+          if (Get-Process -Id $proc.Id -ErrorAction SilentlyContinue) {
+          
+            Write-Host ""
+            Write-Host "======================================="
+            Write-Host "Application started successfully"
+            Write-Host "PID : $($proc.Id)"
+            Write-Host "======================================="
+          
           }
-
+          else {
+          
           Write-Host ""
-          Write-Host "=========== APPLICATION STARTED SUCCESSFULLY ==========="
-
-          Get-CimInstance Win32_Process |
-              Where-Object { $_.CommandLine -like "*eureka-service.jar*" }
+          Write-Host "======================================="
+          Write-Host "Application failed to start"
+          Write-Host "======================================="
+          
+          if (Test-Path $logFile) {
+              Write-Host ""
+              Write-Host "========== STDOUT =========="
+              Get-Content $logFile
+          }
+          
+          if (Test-Path $errorFile) {
+            Write-Host ""
+            Write-Host "========== STDERR =========="
+            Get-Content $errorFile
+          }
+            
+            exit 1
+          }
 
           EOF
 
