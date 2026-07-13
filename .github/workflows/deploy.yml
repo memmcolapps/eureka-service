@@ -204,115 +204,95 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.WINDOW_SSH_PRIVATE_KEY }}
 
-          # =====================
+      # =====================
       # Deploy
       # =====================
       - name: Deploy to Windows
         run: |
           SERVER="${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}"
-
+          
           echo "Creating deployment directory..."
           ssh -o StrictHostKeyChecking=no $SERVER \
             'powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path C:\java-webservices | Out-Null"'
-
-          echo "Creating deployment script..."
-                    cat > deploy.ps1 <<'EOF'
-          $ErrorActionPreference = "Stop"
-
-          $jarPath = "C:\java-webservices\eureka-service.jar"
-          $logFile = "C:\java-webservices\eureka.log"
-          $errorFile = "C:\java-webservices\eureka-error.log"
-
-          Write-Host "Stopping existing application..."
-
-          Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
-
-          Start-Sleep -Seconds 2
-
-          if (!(Test-Path $jarPath)) {
-              throw "JAR file not found: $jarPath"
-          }
-
-          $java = (Get-Command java).Source
-
-          Write-Host "Java executable: $java"
-
-          Write-Host "Starting application..."
-
-          $proc = Start-Process `
-              -FilePath $java `
-              -WorkingDirectory "C:\java-webservices" `
-              -ArgumentList @(
-                  "-Dspring.profiles.active=prod",
-                  "-jar",
-                  $jarPath
-              ) `
-              -RedirectStandardOutput $logFile `
-              -RedirectStandardError $errorFile `
-              -PassThru
-
-          Start-Sleep -Seconds 10
-  
-          if (Get-Process -Id $proc.Id -ErrorAction SilentlyContinue) {
           
-            Write-Host ""
-            Write-Host "======================================="
-            Write-Host "Application started successfully"
-            Write-Host "PID : $($proc.Id)"
-            Write-Host "======================================="
+          echo "Stopping existing application..."
+          ssh -o StrictHostKeyChecking=no $SERVER \
+            'powershell -NoProfile -Command "Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force"'
           
-          }
-          else {
+          echo "Waiting for process to stop..."
+          sleep 3
           
-          Write-Host ""
-          Write-Host "======================================="
-          Write-Host "Application failed to start"
-          Write-Host "======================================="
-          
-          if (Test-Path $logFile) {
-              Write-Host ""
-              Write-Host "========== STDOUT =========="
-              Get-Content $logFile
-          }
-          
-          if (Test-Path $errorFile) {
-            Write-Host ""
-            Write-Host "========== STDERR =========="
-            Get-Content $errorFile
-          }
-            
-            exit 1
-          }
-
-          EOF
-
           echo "Uploading JAR..."
           scp -o StrictHostKeyChecking=no \
             "$JAR_FILE" \
             "$SERVER:C:/java-webservices/eureka-service.jar"
-
-          echo "Uploading deployment script..."
-          scp -o StrictHostKeyChecking=no \
-            deploy.ps1 \
-            "$SERVER:C:/java-webservices/deploy.ps1"
-
-          echo "Executing deployment..."
-            ssh -tt -o StrictHostKeyChecking=no $SERVER <<'EOF'
-            powershell -NoProfile -Command "
-            Write-Host 'USER:'
-            whoami
-            
-            Write-Host 'SESSION:'
-            query user
-            
-            Write-Host 'JAVA PATH:'
-            (Get-Command java).Source
-            
-            Write-Host 'CURRENT DIRECTORY:'
-            Get-Location
-            "
+          
+          echo "Starting application..."
+          ssh -tt -o StrictHostKeyChecking=no $SERVER <<'EOF'
+          powershell -NoProfile -Command "
+          
+          \$ErrorActionPreference = 'Stop'
+          
+          \$jarPath = 'C:\java-webservices\eureka-service.jar'
+          \$logFile = 'C:\java-webservices\eureka.log'
+          \$errorFile = 'C:\java-webservices\eureka-error.log'
+          
+          if (!(Test-Path \$jarPath)) {
+              throw 'JAR file not found.'
+          }
+          
+          \$java = (Get-Command java).Source
+          
+          Write-Host 'Java executable:' \$java
+          
+          \$proc = Start-Process `
+              -FilePath \$java `
+              -WorkingDirectory 'C:\java-webservices' `
+              -ArgumentList @(
+                  '-Dspring.profiles.active=prod',
+                  '-jar',
+                  \$jarPath
+              ) `
+              -RedirectStandardOutput \$logFile `
+              -RedirectStandardError \$errorFile `
+              -PassThru
+          
+          Start-Sleep -Seconds 10
+          
+          if (Get-Process -Id \$proc.Id -ErrorAction SilentlyContinue) {
+          
+              Write-Host ''
+              Write-Host '======================================='
+              Write-Host 'Application started successfully'
+              Write-Host ('PID : ' + \$proc.Id)
+              Write-Host '======================================='
+          
+          }
+          else {
+          
+              Write-Host ''
+              Write-Host '======================================='
+              Write-Host 'Application failed to start'
+              Write-Host '======================================='
+          
+              if (Test-Path \$logFile) {
+                  Write-Host ''
+                  Write-Host '========== STDOUT =========='
+                  Get-Content \$logFile
+              }
+          
+              if (Test-Path \$errorFile) {
+                  Write-Host ''
+                  Write-Host '========== STDERR =========='
+                  Get-Content \$errorFile
+              }
+          
+              exit 1
+          }
+          
+          "
           EOF
-
+          
           echo "Deployment completed."
   
 
