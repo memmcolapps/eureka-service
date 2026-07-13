@@ -297,8 +297,21 @@ jobs:
             "$SERVER:C:/java-webservices/deploy.ps1"
 
           echo "Executing deployment..."
-          ssh -tt -o StrictHostKeyChecking=no $SERVER \
-            'powershell -NoProfile -ExecutionPolicy Bypass -File C:\java-webservices\deploy.ps1'
+            ssh -tt -o StrictHostKeyChecking=no $SERVER <<'EOF'
+            powershell -NoProfile -Command "
+            Write-Host 'USER:'
+            whoami
+            
+            Write-Host 'SESSION:'
+            query user
+            
+            Write-Host 'JAVA PATH:'
+            (Get-Command java).Source
+            
+            Write-Host 'CURRENT DIRECTORY:'
+            Get-Location
+            "
+          EOF
 
           echo "Deployment completed."
   
