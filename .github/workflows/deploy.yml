@@ -237,11 +237,14 @@ jobs:
           ssh -o StrictHostKeyChecking=no $SERVER <<'EOF'
           powershell -NoProfile -Command "
           Start-Process java `
-          -ArgumentList '-Dspring.profiles.active=prod','-jar','C:\java-webservices\eureka-service.jar' `
-          -RedirectStandardOutput 'C:\java-webservices\eureka.log' `
-          -RedirectStandardError 'C:\java-webservices\eureka-error.log' `
+          -ArgumentList @(
+          "-Dspring.profiles.active=prod",
+          "-jar",
+          "C:\java-webservices\eureka-service.jar"
+          ) `
+          -RedirectStandardOutput "C:\java-webservices\eureka.log" `
+          -RedirectStandardError "C:\java-webservices\eureka-error.log" `
           -WindowStyle Hidden
-          "
           EOF
   
           echo "Waiting for application..."
