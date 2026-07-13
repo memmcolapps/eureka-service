@@ -5,9 +5,11 @@ on:
     branches:
       - staging
       - main
+      - window
 
 jobs:
-  deploy:
+  deploy-linux:
+    if: github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
@@ -95,8 +97,7 @@ jobs:
             echo "Starting app..."
 
             nohup java -Dspring.profiles.active=staging \
-              -jar /opt/java-webservices/eureka-service.jar \
-              > /opt/java-webservices/eureka-staging.log 2>&1 &
+              -jar /opt/java-webservices/eureka-service.jar &
 
             echo "Deployment complete"
           EOF
@@ -146,11 +147,104 @@ jobs:
             echo "Starting app..."
 
             nohup java -Dspring.profiles.active=prod \
-              -jar /opt/java-webservices/eureka-service.jar \
-              > /opt/java-webservices/eureka-prod.log 2>&1 &
+              -jar /opt/java-webservices/eureka-service.jar &
 
             echo "Deployment complete"
           EOF
+          
+
+  deploy-window:
+    runs-on: ubuntu-latest
+
+    steps:
+      # =====================
+      # Checkout
+      # =====================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # =====================
+      # Java Setup
+      # =====================
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # =====================
+      # Build
+      # =====================
+      - name: Build with Maven
+        run: |
+          chmod +x mvnw
+          ./mvnw clean package -DskipTests
+
+      # =====================
+      # Resolve JAR
+      # =====================
+      - name: Resolve JAR
+        run: |
+          JAR_FILE=$(find target -name "*.jar" ! -name "*original*.jar" | head -n 1)
+
+          if [ -z "$JAR_FILE" ]; then
+            echo "No JAR found"
+            exit 1
+          fi
+
+          echo "JAR_FILE=$JAR_FILE" >> $GITHUB_ENV
+          echo "Found: $JAR_FILE"
+
+      # =====================
+      # SSH Setup
+      # =====================
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.WINDOW_SSH_PRIVATE_KEY }}
+
+      # =====================
+      # Deploy
+      # =====================
+      - name: Deploy to Windows
+        run: |
+          SERVER="${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}"
+
+          echo "Creating deployment folder..."
+
+          ssh -o StrictHostKeyChecking=no $SERVER \
+          "powershell -Command \"New-Item -ItemType Directory -Force -Path 'C:\\java-webservices' | Out-Null\""
+
+          echo "Uploading JAR..."
+
+          scp -o StrictHostKeyChecking=no \
+            "$JAR_FILE" \
+            "$SERVER:C:/java-webservices/eureka-service.jar"
+
+          echo "Stopping existing application..."
+
+          ssh -o StrictHostKeyChecking=no $SERVER "powershell -Command \"
+            \$process = Get-CimInstance Win32_Process |
+              Where-Object { \$_.CommandLine -like '*eureka-service.jar*' }
+
+            if (\$process) {
+              Stop-Process -Id \$process.ProcessId -Force
+              Start-Sleep -Seconds 2
+            }
+          \""
+
+          echo "Starting application..."
+
+          ssh -o StrictHostKeyChecking=no $SERVER "powershell -Command \"
+            Start-Process java `
+              -ArgumentList '-Dspring.profiles.active=window','-jar','C:\\java-webservices\\eureka-service.jar' `
+              -RedirectStandardOutput 'C:\\java-webservices\\eureka.log' `
+              -RedirectStandardError 'C:\\java-webservices\\eureka-error.log' `
+              -WindowStyle Hidden
+          \""
+
+          echo "Deployment completed."
 
 #name: Deploy Spring Boot to Server
 #
@@ -312,7 +406,11 @@ jobs:
           
           
           
-          
+
+
+
+
+
 
 #------------------------------
 #on:
