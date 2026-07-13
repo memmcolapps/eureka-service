@@ -216,8 +216,8 @@ jobs:
             'powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path C:\java-webservices | Out-Null"'
           
           echo "Stopping existing application..."
-          ssh -o StrictHostKeyChecking=no $SERVER \
-            'powershell -NoProfile -Command "Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force"'
+            ssh -o StrictHostKeyChecking=no $SERVER \
+            'powershell -NoProfile -Command "Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; exit 0"'
           
           echo "Waiting for process to stop..."
           sleep 3
