@@ -349,17 +349,7 @@ jobs:
           
           ssh -tt -o StrictHostKeyChecking=no $SERVER \
             'powershell -NoProfile -ExecutionPolicy Bypass -File C:\java-webservices\deploy.ps1'
-          
-          echo "Fetching logs..."
-          
-          - name: Fetch logs
-            if: always()
-            run: |
-              SERVER="${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}"
-          
-              ssh -o StrictHostKeyChecking=no $SERVER \
-                "powershell -NoProfile -Command \"if (Test-Path 'C:\java-webservices\eureka.log') { Write-Host '===== STDOUT ====='; Get-Content 'C:\java-webservices\eureka.log' -Tail 50 }; if (Test-Path 'C:\java-webservices\eureka-error.log') { Write-Host '===== STDERR ====='; Get-Content 'C:\java-webservices\eureka-error.log' -Tail 50 }\""
-          
+
           echo "Deployment completed."
 
 
