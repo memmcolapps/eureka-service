@@ -204,57 +204,73 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.WINDOW_SSH_PRIVATE_KEY }}
 
-      # =====================
+          # =====================
       # Deploy
       # =====================
       - name: Deploy to Windows
         run: |
           SERVER="${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}"
-  
+
           echo "Creating deployment directory..."
           ssh -o StrictHostKeyChecking=no $SERVER \
-          "powershell -Command \"New-Item -ItemType Directory -Force -Path 'C:\java-webservices' | Out-Null\""
-  
-          echo "Stopping existing application..."
-          ssh -o StrictHostKeyChecking=no $SERVER <<'EOF'
-            powershell -NoProfile -Command "
-            $process = Get-CimInstance Win32_Process |
-            Where-Object { $_.CommandLine -like '*eureka-service.jar*' }
-            
-            if ($null -ne $process) {
-            Stop-Process -Id $process.ProcessId -Force
-            Start-Sleep -Seconds 2
+            'powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path C:\java-webservices | Out-Null"'
+
+          echo "Creating deployment script..."
+          cat > deploy.ps1 <<'EOF'
+          $process = Get-CimInstance Win32_Process |
+              Where-Object { $_.CommandLine -like "*eureka-service.jar*" }
+
+          if ($null -ne $process) {
+              Stop-Process -Id $process.ProcessId -Force
+              Start-Sleep -Seconds 2
           }
-            "
+
+          Copy-Item "C:\java-webservices\eureka-service.jar" "C:\java-webservices\eureka-service.jar" -Force
+
+          Start-Process java `
+              -ArgumentList @(
+                  "-Dspring.profiles.active=prod",
+                  "-jar",
+                  "C:\java-webservices\eureka-service.jar"
+              ) `
+              -RedirectStandardOutput "C:\java-webservices\eureka.log" `
+              -RedirectStandardError "C:\java-webservices\eureka-error.log" `
+              -WindowStyle Hidden
+
+          Start-Sleep -Seconds 5
+
+          if (!(Get-Process java -ErrorAction SilentlyContinue)) {
+              Write-Error "Java process failed to start."
+
+              if (Test-Path "C:\java-webservices\eureka.log") {
+                  Get-Content "C:\java-webservices\eureka.log"
+              }
+
+              if (Test-Path "C:\java-webservices\eureka-error.log") {
+                  Get-Content "C:\java-webservices\eureka-error.log"
+              }
+
+              exit 1
+          }
+
+          Write-Host "Application started successfully."
           EOF
-  
+
           echo "Uploading JAR..."
           scp -o StrictHostKeyChecking=no \
-          "$JAR_FILE" \
-          "$SERVER:C:/java-webservices/eureka-service.jar"
-    
-          echo "Starting application..."
-          ssh -o StrictHostKeyChecking=no $SERVER <<'EOF'
-          powershell -NoProfile -Command "
-          Start-Process java `
-          -ArgumentList @(
-          "-Dspring.profiles.active=prod",
-          "-jar",
-          "C:\java-webservices\eureka-service.jar"
-          ) `
-          -RedirectStandardOutput "C:\java-webservices\eureka.log" `
-          -RedirectStandardError "C:\java-webservices\eureka-error.log" `
-          -WindowStyle Hidden
-          EOF
-  
-          echo "Waiting for application..."
-          sleep 10
-    
-          echo "Checking Java process..."
+            "$JAR_FILE" \
+            "$SERVER:C:/java-webservices/eureka-service.jar"
+
+          echo "Uploading deployment script..."
+          scp -o StrictHostKeyChecking=no \
+            deploy.ps1 \
+            "$SERVER:C:/java-webservices/deploy.ps1"
+
+          echo "Executing deployment..."
           ssh -o StrictHostKeyChecking=no $SERVER \
-          "powershell -Command \"Get-Process java\""
-          
-          echo "Deployment completed successfully."
+            'powershell -ExecutionPolicy Bypass -File C:\java-webservices\deploy.ps1'
+
+          echo "Deployment completed."
   
 
 
