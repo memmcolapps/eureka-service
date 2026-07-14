@@ -244,7 +244,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
-            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} <<'EOF'
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -" <<'EOF'
           $ErrorActionPreference = 'Stop'
 
           $workingDir = 'C:\java-webservices'
@@ -274,8 +274,18 @@ jobs:
 
           Remove-Item $logFile -ErrorAction SilentlyContinue
           Remove-Item $errorFile -ErrorAction SilentlyContinue
-               
-          $process = Start-Process -FilePath "C:\Program Files\java\jdk-17\bin\java.exe" -WorkingDirectory "C:\java-webservices" -ArgumentList @('-Dspring.profiles.active=prod','-jar','C:\java-webservices\eureka-service.jar')-WindowStyle Hidden
+
+          $process = Start-Process `
+            -FilePath $java `
+            -WorkingDirectory $workingDir `
+            -ArgumentList @(
+              '-Dspring.profiles.active=prod',
+              '-jar',
+              $jarPath
+            ) `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError $errorFile `
+            -PassThru
 
           Start-Sleep -Seconds 30
 
@@ -289,6 +299,8 @@ jobs:
           EOF
           
           echo "Deployment completed."
+
+
 
 #      # ==========================
 #      # Verify application
