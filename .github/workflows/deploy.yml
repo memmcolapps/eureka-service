@@ -278,7 +278,7 @@ jobs:
           $process = Start-Process -FilePath 'C:\Program Files\java\jdk-17\bin\java.exe' `
                 -WorkingDirectory "C:\java-webservices" `
                 -ArgumentList @(
-                  '-Dspring.profiles.active=prod'
+                  '-Dspring.profiles.active=prod',
                   '-jar',
                   'C:\java-webservices\eureka-service.jar'
                 )
