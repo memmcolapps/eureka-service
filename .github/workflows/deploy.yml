@@ -262,7 +262,7 @@ jobs:
       - name: Upload new JAR
         run: |
           scp \
-            "${{ steps.jar.outputs.jar }}" \
+            "target/eureka-service.jar" \
             "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/eureka-service.jar"
 
       #######################################################
