@@ -283,9 +283,7 @@ jobs:
               '-jar',
               $jarPath
             ) `
-            -RedirectStandardOutput $logFile `
-            -RedirectStandardError $errorFile `
-            -PassThru
+            -WindowStyle Hidden
 
           Start-Sleep -Seconds 30
 
