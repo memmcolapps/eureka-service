@@ -240,70 +240,70 @@ jobs:
       - name: Deploy Application
         shell: bash
         run: |
-            cat <<'EOF' | ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
-            $ErrorActionPreference = 'Stop'
+          cat <<'EOF' | ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
+          $ErrorActionPreference = 'Stop'
 
-            $workingDir = 'C:\java-webservices'
-            $jarPath = Join-Path $workingDir 'eureka-service.jar'
-            if (!(Test-Path $jarPath)) {
-                Write-Host "JAR not found: $jarPath"
-                exit 1
-            }
-            $logFile = Join-Path $workingDir 'eureka.log'
-            $errorFile = Join-Path $workingDir 'eureka-error.log'
-
-            # Find Java
-            $java = (Get-Command java).Source
-
-            Get-CimInstance Win32_Process |
-              Where-Object { $_.CommandLine -like '*eureka-service.jar*' } |
-              ForEach-Object {
-                Stop-Process -Id $_.ProcessId -Force
-              }
-
-            Start-Sleep -Seconds 3
-
-            Remove-Item $logFile -ErrorAction SilentlyContinue
-            Remove-Item $errorFile -ErrorAction SilentlyContinue
-               
-            $process = Start-Process `
-              -FilePath $java `
-              -WorkingDirectory $workingDir `
-              -ArgumentList @(
-                '-Dspring.profiles.active=prod',
-                '-jar',
-                $jarPath
-              ) `
-              -RedirectStandardOutput $logFile `
-              -RedirectStandardError $errorFile `
-              -PassThru
-            
-            Start-Sleep -Seconds 30
-
-            if ($process.HasExited) {
-              Write-Host 'Application failed to start.'
-              Get-Content $errorFile -ErrorAction SilentlyContinue
+          $workingDir = 'C:\java-webservices'
+          $jarPath = Join-Path $workingDir 'eureka-service.jar'
+          if (!(Test-Path $jarPath)) {
+              Write-Host "JAR not found: $jarPath"
               exit 1
+          }
+          $logFile = Join-Path $workingDir 'eureka.log'
+          $errorFile = Join-Path $workingDir 'eureka-error.log'
+
+          # Find Java
+          $java = (Get-Command java).Source
+
+          Get-CimInstance Win32_Process |
+            Where-Object { $_.CommandLine -like '*eureka-service.jar*' } |
+            ForEach-Object {
+              Stop-Process -Id $_.ProcessId -Force
             }
 
-            Write-Host 'Application started successfully.'
-            EOF
+          Start-Sleep -Seconds 3
+
+          Remove-Item $logFile -ErrorAction SilentlyContinue
+          Remove-Item $errorFile -ErrorAction SilentlyContinue
+             
+          $process = Start-Process `
+            -FilePath $java `
+            -WorkingDirectory $workingDir `
+            -ArgumentList @(
+              '-Dspring.profiles.active=prod',
+              '-jar',
+              $jarPath
+            ) `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError $errorFile `
+            -PassThru
+          
+          Start-Sleep -Seconds 30
+
+          if ($process.HasExited) {
+            Write-Host 'Application failed to start.'
+            Get-Content $errorFile -ErrorAction SilentlyContinue
+            exit 1
+          }
+
+          Write-Host 'Application started successfully.'
+          EOF
 
       # ==========================
       # Verify application
       # ==========================
       - name: Verify deployment
         run: |
-            cat <<'EOF' | ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
-            $connection = Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue
-        
-            if ($connection) {
-              Write-Host "Application is listening on port 8761."
-            } else {
-              Write-Host "Application is not listening on port 8761."
-              exit 1
-            }
-              EOF 
+          cat <<'EOF' | ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
+          $connection = Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue
+      
+          if ($connection) {
+            Write-Host "Application is listening on port 8761."
+          } else {
+            Write-Host "Application is not listening on port 8761."
+            exit 1
+          }
+          EOF 
 
 #  deploy-window:
 #    if: github.ref == 'refs/heads/window'
