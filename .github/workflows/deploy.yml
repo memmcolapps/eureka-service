@@ -360,9 +360,10 @@ jobs:
       - name: Verify deployment
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_rsa \
+          cat <<'EOF' | ssh -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
-            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} <<'EOF'
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
+
           $connection = Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue
 
           if ($connection) {
@@ -371,7 +372,7 @@ jobs:
             Write-Host "Application is not listening on port 8761."
             exit 1
           }
-          EOF 
+          EOF
 
 #      - name: Deploy Application
 #        shell: bash
