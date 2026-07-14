@@ -155,6 +155,7 @@ jobs:
 
 
   deploy-windows:
+    if: github.ref == 'refs/heads/window'
     runs-on: ubuntu-latest
 
     env:
