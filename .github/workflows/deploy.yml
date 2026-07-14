@@ -160,7 +160,7 @@ jobs:
 
     env:
       APP_NAME: eureka-service
-      DEPLOY_DIR: 'C:\java-webservices'
+      DEPLOY_DIR: 'C:\java-webservices\eureka_service'
 
     steps:
       # ==========================
@@ -224,81 +224,195 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no \
           ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-          "powershell -Command \"New-Item -ItemType Directory -Force -Path 'C:\java-webservices'\""
+          "powershell -Command \"New-Item -ItemType Directory -Force -Path 'C:\java-webservices\eureka_service'\""
 
-      # ==========================
-      # Upload JAR
-      # ==========================
-      - name: Upload JAR
+      #######################################################
+      # Stop service and backup current JAR
+      #######################################################
+      - name: Stop Service and Backup JAR
         run: |
-          scp -i ~/.ssh/id_rsa \
-          -o StrictHostKeyChecking=no \
-          app.jar \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka-service.jar"
+          ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
+            \$ErrorActionPreference='Stop'
 
-      # ==========================
-      # Execute deployment script
-      # ==========================
-      - name: Deploy Application
-        shell: bash
-        run: |
-          ssh -i ~/.ssh/id_rsa \
-            -o StrictHostKeyChecking=no \
-            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -" <<'EOF'
-          $ErrorActionPreference = 'Stop'
+            Write-Host 'Stopping Windows service...'
 
-          $workingDir = 'C:\java-webservices'
-          $jarPath = Join-Path $workingDir 'eureka-service.jar'
-
-          if (!(Test-Path $workingDir)) {
-              New-Item -ItemType Directory -Force -Path $workingDir | Out-Null
-          }
-
-          if (!(Test-Path $jarPath)) {
-              Write-Host "JAR not found: $jarPath"
-              exit 1
-          }
-
-          $logFile = Join-Path $workingDir 'eureka.log'
-          $errorFile = Join-Path $workingDir 'eureka-error.log'
-
-          $java = (Get-Command java).Source
-
-          Get-CimInstance Win32_Process |
-            Where-Object { $_.CommandLine -like '*eureka-service.jar*' } |
-            ForEach-Object {
-              Stop-Process -Id $_.ProcessId -Force
+            if ((Get-Service -Name 'Eureka-Service').Status -eq 'Running') {
+                Stop-Service -Name 'Eureka-Service' -Force
+                (Get-Service -Name 'Eureka-Service').WaitForStatus('Stopped','00:00:30')
             }
 
-          Start-Sleep -Seconds 3
+            Write-Host 'Removing previous backup...'
 
-          Remove-Item $logFile -ErrorAction SilentlyContinue
-          Remove-Item $errorFile -ErrorAction SilentlyContinue
+            if (Test-Path 'C:\java-webservices\eureka_service\eureka-service-old.jar') {
+                Remove-Item 'C:\java-webservices\eureka_service\eureka-service-old.jar' -Force
+            }
 
-          $process = Start-Process `
-            -FilePath $java `
-            -WorkingDirectory $workingDir `
-            -ArgumentList @(
-              '-Dspring.profiles.active=prod',
-              '-jar',
-              $jarPath
-            ) `
-            -RedirectStandardOutput $logFile `
-            -RedirectStandardError $errorFile `
-            -PassThru
+            Write-Host 'Backing up current JAR...'
 
-          Start-Sleep -Seconds 30
+            if (Test-Path 'C:\java-webservices\eureka_service\eureka-service.jar') {
+                Rename-Item `
+                    'C:\java-webservices\eureka_service\eureka-service.jar' `
+                    'eureka-service-old.jar'
+            }
 
-          if ($process.HasExited) {
-            Write-Host 'Application failed to start.'
-            Get-Content $errorFile -ErrorAction SilentlyContinue
-            exit 1
-          }
+            Write-Host 'Backup completed.'
+          "
 
-          Write-Host 'Application started successfully.'
-          EOF
-          
-          echo "Deployment completed."
+      #######################################################
+      # Upload new JAR
+      #######################################################
+      - name: Upload new JAR
+        run: |
+          scp \
+            "${{ steps.jar.outputs.jar }}" \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/eureka-service.jar"
+
+      #######################################################
+      # Start Windows service
+      #######################################################
+      - name: Start Service
+        run: |
+          ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
+            \$ErrorActionPreference='Stop'
+
+            Write-Host 'Starting Windows service...'
+
+            Start-Service -Name 'Eureka-Service'
+
+            (Get-Service -Name 'Eureka-Service').WaitForStatus('Running','00:00:30')
+
+            \$service = Get-Service -Name 'Eureka-Service'
+
+            if (\$service.Status -ne 'Running') {
+                throw 'Service failed to start.'
+            }
+
+            Write-Host 'Service is running.'
+
+            Write-Host 'Deployment completed successfully.'
+          "
+
+      #######################################################
+      # Verify deployment
+      #######################################################
+      - name: Verify Deployment
+        run: |
+          ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
+            Get-Service -Name '${{ env.SERVICE_NAME }}'
+
+            Write-Host ''
+            Write-Host 'Current files:'
+
+            Get-ChildItem C:\java-webservices\eureka_service\*.jar
+          "
+#      # ==========================
+#      # Upload JAR
+#      # ==========================
+#      - name: Upload JAR
+#        run: |
+#          scp -i ~/.ssh/id_rsa \
+#          -o StrictHostKeyChecking=no \
+#          app.jar \
+#          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/eureka-service.jar"
+#
+#      # ==========================
+#      # Execute deployment script
+#      # ==========================
+#      - name: Deploy Application
+#        run: |
+#          ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
+#          \$ErrorActionPreference = 'Stop'
+#
+#          Write-Host 'Stopping Windows service...'
+#
+#          if ((Get-Service -Name 'Eureke-service').Status -eq 'Running') {
+#              Stop-Service -Name 'Eureke-service' -Force
+#              \$service = Get-Service -Name 'Eureke-service'
+#              \$service.WaitForStatus('Stopped','00:00:30')
+#          }
+#
+#          Write-Host 'Replacing JAR...'
+#
+#          Move-Item `
+#              'C:\java-webservices\eureka_service\eureka-service.jar.new' `
+#              'C:\java-webservices\eureka_service\eureka-service.jar' `
+#              -Force
+#
+#          Write-Host 'Starting Windows service...'
+#
+#          Start-Service -Name 'Eureke-service'
+#
+#          \$service = Get-Service -Name 'Eureke-service'
+#          \$service.WaitForStatus('Running','00:00:30')
+#
+#          if (\$service.Status -ne 'Running') {
+#              throw 'Service failed to start.'
+#          }
+#
+#          Write-Host 'Deployment completed successfully.'
+#          "
+
+
+
+#        shell: bash
+#        run: |
+#          ssh -i ~/.ssh/id_rsa \
+#            -o StrictHostKeyChecking=no \
+#            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -" <<'EOF'
+#          $ErrorActionPreference = 'Stop'
+#
+#          $workingDir = 'C:\java-webservices'
+#          $jarPath = Join-Path $workingDir 'eureka-service.jar'
+#
+#          if (!(Test-Path $workingDir)) {
+#              New-Item -ItemType Directory -Force -Path $workingDir | Out-Null
+#          }
+#
+#          if (!(Test-Path $jarPath)) {
+#              Write-Host "JAR not found: $jarPath"
+#              exit 1
+#          }
+#
+#          $logFile = Join-Path $workingDir 'eureka.log'
+#          $errorFile = Join-Path $workingDir 'eureka-error.log'
+#
+#          $java = (Get-Command java).Source
+#
+#          Get-CimInstance Win32_Process |
+#            Where-Object { $_.CommandLine -like '*eureka-service.jar*' } |
+#            ForEach-Object {
+#              Stop-Process -Id $_.ProcessId -Force
+#            }
+#
+#          Start-Sleep -Seconds 3
+#
+#          Remove-Item $logFile -ErrorAction SilentlyContinue
+#          Remove-Item $errorFile -ErrorAction SilentlyContinue
+#
+#          $process = Start-Process `
+#            -FilePath $java `
+#            -WorkingDirectory $workingDir `
+#            -ArgumentList @(
+#              '-Dspring.profiles.active=prod',
+#              '-jar',
+#              $jarPath
+#            ) `
+#            -RedirectStandardOutput $logFile `
+#            -RedirectStandardError $errorFile `
+#            -PassThru
+#
+#          Start-Sleep -Seconds 30
+#
+#          if ($process.HasExited) {
+#            Write-Host 'Application failed to start.'
+#            Get-Content $errorFile -ErrorAction SilentlyContinue
+#            exit 1
+#          }
+#
+#          Write-Host 'Application started successfully.'
+#          EOF
+#
+#          echo "Deployment completed."
 
 
 
