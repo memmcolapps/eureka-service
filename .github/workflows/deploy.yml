@@ -275,7 +275,7 @@ jobs:
           Remove-Item $logFile -ErrorAction SilentlyContinue
           Remove-Item $errorFile -ErrorAction SilentlyContinue
                
-          $process = Start-Process -FilePath "C:\Program Files\java\jdk-17\bin\java.exe" -WorkingDirectory "C:\java-webservices" -ArgumentList @('-Dspring.profiles.active=prod','-jar','C:\java-webservices\eureka-service.jar')
+          $process = Start-Process -FilePath "C:\Program Files\java\jdk-17\bin\java.exe" -WorkingDirectory "C:\java-webservices" -ArgumentList @('-Dspring.profiles.active=prod','-jar','C:\java-webservices\eureka-service.jar')-WindowStyle Hidden
 
           Start-Sleep -Seconds 30
 
