@@ -160,7 +160,7 @@ jobs:
 
     env:
       APP_NAME: eureka-service
-      DEPLOY_DIR: C:\java-webservices
+      DEPLOY_DIR: 'C:\java-webservices'
 
     steps:
       # ==========================
@@ -203,19 +203,19 @@ jobs:
           
           echo "Using JAR: $JAR"
           cp "$JAR" app.jar
-
-      # ==========================
-      # Configure SSH
-      # ==========================
-      - name: Configure SSH
-        shell: bash
-        run: |
-          mkdir -p ~/.ssh
-          
-          echo "${{ secrets.WINDOW_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          
-          ssh-keyscan ${{ secrets.WINDOW_SERVER_HOST }} >> ~/.ssh/known_hosts
+#
+#      # ==========================
+#      # Configure SSH
+#      # ==========================
+#      - name: Configure SSH
+#        shell: bash
+#        run: |
+#          mkdir -p ~/.ssh
+#
+#          echo "${{ secrets.WINDOW_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+#          chmod 600 ~/.ssh/id_rsa
+#
+#          ssh-keyscan ${{ secrets.WINDOW_SERVER_HOST }} >> ~/.ssh/known_hosts
 
       # ==========================
       # Create deployment folder
@@ -230,10 +230,13 @@ jobs:
       # Upload JAR
       # ==========================
       - name: Upload JAR
-        run: |
-          scp \
-          app.jar \
-          ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka-service.jar
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.WINDOW_SERVER_HOST }}
+          username: ${{ secrets.WINDOW_SERVER_USER }}
+          key: ${{ secrets.WINDOW_SSH_PRIVATE_KEY }}
+          source: "app.jar"
+          target: "C:/java-webservices"
 
       # ==========================
       # Execute deployment script
@@ -264,7 +267,7 @@ jobs:
               Where-Object { $_.CommandLine -like '*eureka-service.jar*' } |
               ForEach-Object {
                 Stop-Process -Id $_.ProcessId -Force
-            }
+              }
             
             Start-Sleep -Seconds 3
             
@@ -278,10 +281,10 @@ jobs:
                 '-Dspring.profiles.active=prod',
                 '-jar',
                 $jarPath
-            ) `
-            -RedirectStandardOutput $logFile `
-            -RedirectStandardError $errorFile `
-            -PassThru
+              ) `
+              -RedirectStandardOutput $logFile `
+              -RedirectStandardError $errorFile `
+              -PassThru
             
             Start-Sleep -Seconds 30
             
@@ -297,17 +300,21 @@ jobs:
       # Verify application
       # ==========================
       - name: Verify deployment
-        run: |
-          cat <<'EOF' | ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
-          $connection = Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue
-      
-          if ($connection) {
-            Write-Host "Application is listening on port 8761."
-          } else {
-            Write-Host "Application is not listening on port 8761."
-            exit 1
-          }
-          EOF 
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.WINDOW_SERVER_HOST }}
+          username: ${{ secrets.WINDOW_SERVER_USER }}
+          key: ${{ secrets.WINDOW_SSH_PRIVATE_KEY }}
+          script: |
+            $connection = Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue
+        
+            if ($connection) {
+              Write-Host "Application is listening on port 8761."
+            } else {
+              Write-Host "Application is not listening on port 8761."
+              exit 1
+            }
+            EOF 
 
 #
 #  deploy-window:
@@ -508,7 +515,7 @@ jobs:
 #          ssh -tt -o StrictHostKeyChecking=no $SERVER \
 #            'powershell -NoProfile -ExecutionPolicy Bypass -File C:\java-webservices\deploy.ps1'
 
-          echo "Deployment completed."
+#          echo "Deployment completed."
 
 
 
