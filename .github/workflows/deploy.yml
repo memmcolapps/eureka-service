@@ -240,81 +240,200 @@ jobs:
       # Execute deployment script
       # ==========================
       - name: Deploy Application
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.WINDOW_SERVER_HOST }}
-          username: ${{ secrets.WINDOW_SERVER_USER }}
-          key: ${{ secrets.WINDOW_SSH_PRIVATE_KEY }}
-          script: |
-            $ErrorActionPreference = 'Stop'
-            
-            $workingDir = 'C:\java-webservices'
-            $jarPath = Join-Path $workingDir 'eureka-service.jar'
-            
-            if (!(Test-Path $jarPath)) {
-                Write-Host "JAR not found: $jarPath"
-                exit 1
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} <<'EOF'
+          $ErrorActionPreference = 'Stop'
+
+          $workingDir = 'C:\java-webservices'
+          $jarPath = Join-Path $workingDir 'eureka-service.jar'
+
+          if (!(Test-Path $workingDir)) {
+              New-Item -ItemType Directory -Force -Path $workingDir | Out-Null
+          }
+
+          if (!(Test-Path $jarPath)) {
+              Write-Host "JAR not found: $jarPath"
+              exit 1
+          }
+
+          $logFile = Join-Path $workingDir 'eureka.log'
+          $errorFile = Join-Path $workingDir 'eureka-error.log'
+
+          $java = (Get-Command java).Source
+
+          Get-CimInstance Win32_Process |
+            Where-Object { $_.CommandLine -like '*eureka-service.jar*' } |
+            ForEach-Object {
+              Stop-Process -Id $_.ProcessId -Force
             }
-            
-            $logFile = Join-Path $workingDir 'eureka.log'
-            $errorFile = Join-Path $workingDir 'eureka-error.log'
-            
-            $java = (Get-Command java).Source
-            
-            Get-CimInstance Win32_Process |
-              Where-Object { $_.CommandLine -like '*eureka-service.jar*' } |
-              ForEach-Object {
-                Stop-Process -Id $_.ProcessId -Force
-              }
-            
-            Start-Sleep -Seconds 3
-            
-            Remove-Item $logFile -ErrorAction SilentlyContinue
-            Remove-Item $errorFile -ErrorAction SilentlyContinue
-            
-            $process = Start-Process `
-              -FilePath $java `
-              -WorkingDirectory $workingDir `
-              -ArgumentList @(
-                '-Dspring.profiles.active=prod',
-                '-jar',
-                $jarPath
-              ) `
-              -RedirectStandardOutput $logFile `
-              -RedirectStandardError $errorFile `
-              -PassThru
-            
-            Start-Sleep -Seconds 30
-            
-            if ($process.HasExited) {
-                Write-Host 'Application failed to start.'
-                Get-Content $errorFile -ErrorAction SilentlyContinue
-                exit 1
-            }
-            
-            Write-Host 'Application started successfully.'
+
+          Start-Sleep -Seconds 3
+
+          Remove-Item $logFile -ErrorAction SilentlyContinue
+          Remove-Item $errorFile -ErrorAction SilentlyContinue
+
+          $process = Start-Process `
+            -FilePath $java `
+            -WorkingDirectory $workingDir `
+            -ArgumentList @(
+              '-Dspring.profiles.active=prod',
+              '-jar',
+              $jarPath
+            ) `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError $errorFile `
+            -PassThru
+
+          Start-Sleep -Seconds 30
+
+          if ($process.HasExited) {
+            Write-Host 'Application failed to start.'
+            Get-Content $errorFile -ErrorAction SilentlyContinue
+            exit 1
+          }
+
+          Write-Host 'Application started successfully.'
+          EOF
+          
+          echo "Deployment completed."
+#      - name: Deploy Application
+#        uses: appleboy/ssh-action@v1.2.0
+#        with:
+#          host: ${{ secrets.WINDOW_SERVER_HOST }}
+#          username: ${{ secrets.WINDOW_SERVER_USER }}
+#          key: ${{ secrets.WINDOW_SSH_PRIVATE_KEY }}
+#          script: |
+#            $ErrorActionPreference = 'Stop'
+#
+#            $workingDir = 'C:\java-webservices'
+#            $jarPath = Join-Path $workingDir 'eureka-service.jar'
+#
+#            if (!(Test-Path $jarPath)) {
+#                Write-Host "JAR not found: $jarPath"
+#                exit 1
+#            }
+#
+#            $logFile = Join-Path $workingDir 'eureka.log'
+#            $errorFile = Join-Path $workingDir 'eureka-error.log'
+#
+#            $java = (Get-Command java).Source
+#
+#            Get-CimInstance Win32_Process |
+#              Where-Object { $_.CommandLine -like '*eureka-service.jar*' } |
+#              ForEach-Object {
+#                Stop-Process -Id $_.ProcessId -Force
+#              }
+#
+#            Start-Sleep -Seconds 3
+#
+#            Remove-Item $logFile -ErrorAction SilentlyContinue
+#            Remove-Item $errorFile -ErrorAction SilentlyContinue
+#
+#            $process = Start-Process `
+#              -FilePath $java `
+#              -WorkingDirectory $workingDir `
+#              -ArgumentList @(
+#                '-Dspring.profiles.active=prod',
+#                '-jar',
+#                $jarPath
+#              ) `
+#              -RedirectStandardOutput $logFile `
+#              -RedirectStandardError $errorFile `
+#              -PassThru
+#
+#            Start-Sleep -Seconds 30
+#
+#            if ($process.HasExited) {
+#                Write-Host 'Application failed to start.'
+#                Get-Content $errorFile -ErrorAction SilentlyContinue
+#                exit 1
+#            }
+#
+#            Write-Host 'Application started successfully.'
 
       # ==========================
       # Verify application
       # ==========================
       - name: Verify deployment
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.WINDOW_SERVER_HOST }}
-          username: ${{ secrets.WINDOW_SERVER_USER }}
-          key: ${{ secrets.WINDOW_SSH_PRIVATE_KEY }}
-          script: |
-            $connection = Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue
-        
-            if ($connection) {
-              Write-Host "Application is listening on port 8761."
-            } else {
-              Write-Host "Application is not listening on port 8761."
-              exit 1
-            }
-            EOF 
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} <<'EOF'
+          $connection = Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue
 
-#
+          if ($connection) {
+            Write-Host "Application is listening on port 8761."
+          } else {
+            Write-Host "Application is not listening on port 8761."
+            exit 1
+          }
+          EOF 
+
+#      - name: Deploy Application
+#        shell: bash
+#        run: |
+#          cat <<'EOF' | ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
+#            $ErrorActionPreference = 'Stop'
+#            $workingDir = 'C:\java-webservices'
+#            $jarPath = Join-Path $workingDir 'eureka-service.jar'
+#            if (!(Test-Path $jarPath)) {
+#              Write-Host "JAR not found: $jarPath" exit 1
+#            }
+#            $logFile = Join-Path $workingDir 'eureka.log'
+#            $errorFile = Join-Path $workingDir 'eureka-error.log'
+#            # Find Java
+#            $java = (Get-Command java).Source
+#            # Write-Host 'Java:'
+#            $java 'C:\Program Files\java\jdk-17\bin\java.exe'
+#            # Stop existing application
+#            Get-CimInstance Win32_Process |
+#            Where-Object {
+#            $_.CommandLine -like '*eureka-service.jar*' } |
+#            ForEach-Object { # Write-Host 'Stopping process:'
+#            \$_.ProcessId Stop-Process -Id $_.ProcessId -Force
+#            }
+#            Start-Sleep -Seconds 3
+#            # Remove old logs
+#            Remove-Item $logFile -ErrorAction SilentlyContinue
+#            Remove-Item $errorFile -ErrorAction SilentlyContinue # Start application
+#            $process = Start-Process `
+#            -FilePath $java `
+#            -WorkingDirectory $workingDir `
+#            -ArgumentList @(
+#              '-Dspring.profiles.active=prod',
+#              '-jar',
+#              $jarPath
+#            )`
+#            -RedirectStandardOutput $logFile
+#            -RedirectStandardError $errorFile
+#            -PassThru
+#            # Write-Host 'Started PID:'
+#            $process.Id Start-Sleep -Seconds 30
+#            if ($process.HasExited) {
+#            Write-Host 'Application failed to start.'
+#            Get-Content $errorFile -ErrorAction SilentlyContinue
+#            exit 1
+#            }
+#            Write-Host 'Application started successfully.'
+#            EOF
+#        # ==========================
+#        # Verify application
+#        # ==========================
+#        - name: Verify deployment
+#          run: |
+#            ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} <<'EOF'
+#            $connection = Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue
+#            if ($connection) {
+#              Write-Host "Application is listening on port 8761."
+#            }
+#            else {
+#              Write-Host "Application is not listening on port 8761." exit 1
+#            }
+#            EOF
 #  deploy-window:
 #    if: github.ref == 'refs/heads/window'
 #    runs-on: ubuntu-latest
