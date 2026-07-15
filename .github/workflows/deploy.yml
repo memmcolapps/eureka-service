@@ -236,15 +236,42 @@ jobs:
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             "powershell -NoProfile -NonInteractive -" <<'EOF'
           $ErrorActionPreference='Stop'
+          
+          $jar = "C:\java-webservices\eureka_service\eureka-service.jar"
+          $backup = "C:\java-webservices\eureka_service\eureka-service-old.jar"
+      
+          Write-Host "========== BEFORE =========="
+          Get-ChildItem C:\java-webservices\eureka_service
 
           Write-Host 'Stopping Windows service...'
 
           $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
+          
+           Write-Host "Current Status: $($service.Status)"
 
           if ($service.Status -eq "Running") {
             Stop-Service -Name "Eureka-Service" -Force
             $service.WaitForStatus("Stopped","00:00:30")
           }
+          
+          $service = Get-Service "Eureka-Service"
+          
+          Write-Host "Status after stop: $($service.Status)"
+
+          if ($service.Status -ne "Stopped") {
+            throw "Service failed to stop."
+          }
+      
+          Write-Host "Jar exists? $(Test-Path $jar)"
+      
+          if (Test-Path $backup) {
+            Remove-Item $backup -Force
+          }
+
+          Rename-Item -Path $jar -NewName "eureka-service-old.jar" -ErrorAction Stop
+      
+          Write-Host "========== AFTER =========="
+          Get-ChildItem C:\java-webservices\eureka_service
 
           Write-Host 'Removing previous backup...'
 
@@ -305,7 +332,7 @@ jobs:
       - name: Verify Deployment
         run: |
           ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
-            Get-Service -Name '${{ env.SERVICE_NAME }}'
+            Get-Service -Name 'Eureka-Service'
 
             Write-Host ''
             Write-Host 'Current files:'
