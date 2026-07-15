@@ -261,8 +261,9 @@ jobs:
       #######################################################
       - name: Upload new JAR
         run: |
-          scp \
-            "target/eureka-service.jar" \
+          scp -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            app.jar \
             "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/eureka-service.jar"
 
       #######################################################
