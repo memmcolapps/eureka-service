@@ -231,30 +231,38 @@ jobs:
       #######################################################
       - name: Stop Service and Backup JAR
         run: |
-          ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
-            \$ErrorActionPreference='Stop'
+          ssh -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+          $ErrorActionPreference='Stop'
 
-            Write-Host 'Stopping Windows service...'
+          Write-Host 'Stopping Windows service...'
 
-            if ((Get-Service -Name 'Eureka-Service').Status -eq 'Running') {
-                Stop-Service -Name 'Eureka-Service' -Force
-                (Get-Service -Name 'Eureka-Service').WaitForStatus('Stopped','00:00:30')
-            }
+          $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
 
-            Write-Host 'Removing previous backup...'
+          if ($service.Status -eq "Running") {
+            Stop-Service -Name "Eureka-Service" -Force
+            $service.WaitForStatus("Stopped","00:00:30")
+          }
 
-            if (Test-Path "C:\java-webservices\eureka_service\eureka-service-old.jar") {
-                Remove-Item "C:\java-webservices\eureka_service\eureka-service-old.jar" -Force
-            }
+          Write-Host 'Removing previous backup...'
 
-            Write-Host 'Backing up current JAR...'
+          if (Test-Path "C:\java-webservices\eureka_service\eureka-service-old.jar") {
+              Remove-Item "C:\java-webservices\eureka_service\eureka-service-old.jar" -Force
+          }
 
-            if (Test-Path "C:\java-webservices\eureka_service\eureka-service.jar") {
-                Rename-Item "C:\java-webservices\eureka_service\eureka-service.jar" "eureka-service-old.jar"
-            }
+          Write-Host 'Backing up current JAR...'
 
-            Write-Host 'Backup completed.'
-          "
+          if (Test-Path "C:\java-webservices\eureka_service\eureka-service.jar") {
+              Rename-Item "C:\java-webservices\eureka_service\eureka-service.jar" "eureka-service-old.jar"
+          }
+          if (Get-Service -Name "Eureka-Service").Status -ne "Stopped") {
+              throw "Service did not stop."
+          }
+
+          Write-Host 'Backup completed.'
+          EOF
 
       #######################################################
       # Upload new JAR
