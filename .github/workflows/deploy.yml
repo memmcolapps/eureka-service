@@ -364,16 +364,10 @@ jobs:
             -o StrictHostKeyChecking=no \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
-            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}\
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             "powershell -NoProfile -NonInteractive -" <<'EOF'
           
             $ErrorActionPreference='Stop'
-
-#            Write-Host "Renaming app-new.jar..."
-#            Rename-Item `
-#              "C:\java-webservices\eureka_service\app-new.jar" `
-#              "eureka-service.jar" `
-#              -ErrorAction Stop
           
             if (!(Test-Path "C:\java-webservices\eureka_service\eureka-service.jar")) {
                 throw "Deployment JAR missing."
