@@ -224,6 +224,8 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             "powershell -NoProfile -Command \"
               \$ErrorActionPreference='Stop'
@@ -244,6 +246,8 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             "powershell -NoProfile -NonInteractive -" <<'EOF'
           $ErrorActionPreference='Stop'
@@ -340,7 +344,7 @@ jobs:
       #######################################################
       - name: Upload new JAR
         run: |
-          scp -i ~/.ssh/id_rsa \
+          scp -v -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
@@ -370,8 +374,10 @@ jobs:
             -o StrictHostKeyChecking=no \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
-            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
-            \$ErrorActionPreference='Stop'
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}\
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+          
+            $ErrorActionPreference='Stop'
 
             Write-Host 'Starting Windows service...'
           
@@ -388,21 +394,21 @@ jobs:
           
             Start-Sleep -Seconds 5
               
-              $java = Get-CimInstance Win32_Process |
+            $java = Get-CimInstance Win32_Process |
               Where-Object {
               $_.Name -eq "java.exe" -and
               $_.CommandLine -like "*eureka-service.jar*"
             }
               
-              if (-not $java) {
+            if (-not $java) {
               throw "Java process did not start."
             }
 
             (Get-Service -Name 'Eureka-Service').WaitForStatus('Running','00:00:30')
 
-            \$service = Get-Service -Name 'Eureka-Service'
+            $service = Get-Service -Name 'Eureka-Service'
 
-            if (\$service.Status -ne 'Running') {
+            if ($service.Status -ne 'Running') {
                 throw 'Service failed to start.'
             }
 
