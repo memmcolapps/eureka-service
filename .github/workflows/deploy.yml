@@ -225,6 +225,9 @@ jobs:
           ssh -o StrictHostKeyChecking=no \
           ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
           "powershell -Command \"New-Item -ItemType Directory -Force -Path 'C:\java-webservices\eureka_service'\""
+          if (!(Test-Path "C:\java-webservices\eureka_service")) {
+            throw "Deployment directory was not created."
+          }
 
       #######################################################
       # Stop service and backup current JAR
@@ -255,6 +258,30 @@ jobs:
           }
 
           $service = Get-Service "Eureka-Service"
+          
+          Write-Host "Waiting for java.exe to exit..."
+  
+          $timeout = 30
+          
+          while ($timeout -gt 0) {
+          
+              $java = Get-CimInstance Win32_Process |
+                Where-Object {
+                  $_.Name -eq "java.exe" -and
+                  $_.CommandLine -like "*eureka-service.jar*"
+                }
+              
+            if (-not $java) {
+              break
+            }
+              
+              Start-Sleep -Seconds 1
+              $timeout--
+            }
+              
+              if ($java) {
+              throw "Java process is still running."
+          }
 
           Write-Host "Status after stop: $($service.Status)"
 
@@ -275,8 +302,15 @@ jobs:
             throw ("Jar not found: " + $jar)
           }
 
-          Rename-Item -Path $jar -NewName "eureka-service-old.jar"
-
+          Rename-Item -Path $jar -NewName "eureka-service-old.jar" -ErrorAction Stop
+          if (!(Test-Path $backup)) {
+              throw "Backup was not created."
+          }
+        
+          if (Test-Path $jar) {
+              throw "Original JAR still exists."
+          }
+          
           Write-Host "========== AFTER =========="
           Get-ChildItem C:\java-webservices\eureka_service
           Write-Host 'Backup completed.'
@@ -290,7 +324,7 @@ jobs:
           scp -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
             app.jar \
-            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/eureka-service.jar"
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/app-new.jar"
 
       #######################################################
       # Verify After Upload
@@ -313,8 +347,29 @@ jobs:
             \$ErrorActionPreference='Stop'
 
             Write-Host 'Starting Windows service...'
+          
+            Rename-Item `
+              "C:\java-webservices\eureka_service\app-new.jar" `
+              "eureka-service.jar" `
+              -ErrorAction Stop
+          
+            if (!(Test-Path "C:\java-webservices\eureka_service\eureka-service.jar")) {
+                throw "Deployment JAR missing."
+            }
 
             Start-Service -Name 'Eureka-Service'
+          
+            Start-Sleep -Seconds 5
+              
+              $java = Get-CimInstance Win32_Process |
+              Where-Object {
+              $_.Name -eq "java.exe" -and
+              $_.CommandLine -like "*eureka-service.jar*"
+            }
+              
+              if (-not $java) {
+              throw "Java process did not start."
+            }
 
             (Get-Service -Name 'Eureka-Service').WaitForStatus('Running','00:00:30')
 
