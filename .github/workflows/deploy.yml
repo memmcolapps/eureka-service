@@ -243,11 +243,11 @@ jobs:
           Write-Host "========== BEFORE =========="
           Get-ChildItem C:\java-webservices\eureka_service
 
-          Write-Host 'Stopping Windows service...'
+          Write-Host 'Stopping service...'
 
           $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
 
-           Write-Host "Current Status: $($service.Status)"
+          Write-Host "Current Status: $($service.Status)"
 
           if ($service.Status -eq "Running") {
             Stop-Service -Name "Eureka-Service" -Force
@@ -267,8 +267,14 @@ jobs:
           if (Test-Path $backup) {
             Remove-Item $backup -Force
           }
+          
+          Write-Host "Backing up JAR..."
+  
+          if (!(Test-Path $jar)) {
+            throw "$jar does not exist."
+          }
 
-          Rename-Item -Path $jar -NewName "eureka-service-old.jar" -ErrorAction Stop
+          Rename-Item -Path $jar -NewName "eureka-service-old.jar"
 
           Write-Host "========== AFTER =========="
           Get-ChildItem C:\java-webservices\eureka_service
@@ -281,13 +287,13 @@ jobs:
 
           Write-Host 'Backing up current JAR...'
 
-          if (Test-Path "C:\java-webservices\eureka_service\eureka-service.jar") {
-              Rename-Item "C:\java-webservices\eureka_service\eureka-service.jar" "eureka-service-old.jar"
-          }
-          if (Get-Service -Name "Eureka-Service").Status -ne "Stopped") {
-              throw "Service did not stop."
-          }
-
+#          if (Test-Path "C:\java-webservices\eureka_service\eureka-service.jar") {
+#              Rename-Item "C:\java-webservices\eureka_service\eureka-service.jar" "eureka-service-old.jar"
+#          }
+#          if (Get-Service -Name "Eureka-Service").Status -ne "Stopped") {
+#              throw "Service did not stop."
+#          }
+          Get-ChildItem C:\java-webservices\eureka_service
           Write-Host 'Backup completed.'
           EOF
 
