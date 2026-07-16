@@ -379,8 +379,7 @@ jobs:
           
             $ErrorActionPreference='Stop'
 
-            Write-Host 'Starting Windows service...'
-          
+            Write-Host "Renaming app-new.jar..."
             Rename-Item `
               "C:\java-webservices\eureka_service\app-new.jar" `
               "eureka-service.jar" `
@@ -390,6 +389,7 @@ jobs:
                 throw "Deployment JAR missing."
             }
 
+            Write-Host 'Starting service...'
             Start-Service -Name 'Eureka-Service'
           
             Start-Sleep -Seconds 5
@@ -404,6 +404,7 @@ jobs:
               throw "Java process did not start."
             }
 
+            Write-Host "Waiting for Running state..."
             (Get-Service -Name 'Eureka-Service').WaitForStatus('Running','00:00:30')
 
             $service = Get-Service -Name 'Eureka-Service'
@@ -415,7 +416,7 @@ jobs:
             Write-Host 'Service is running.'
 
             Write-Host 'Deployment completed successfully.'
-          "
+          EOF
 
       #######################################################
       # Verify deployment
