@@ -253,7 +253,7 @@ jobs:
           $ErrorActionPreference='Stop'
 
           $jar = "C:\java-webservices\eureka_service\eureka-service.jar"
-#          $backup = "C:\java-webservices\eureka_service\eureka-service-old.jar"
+               
 
           Write-Host "========== BEFORE =========="
           Get-ChildItem C:\java-webservices\eureka_service
@@ -314,21 +314,11 @@ jobs:
 
           Write-Host "Jar exists? $(Test-Path $jar)"
           
-#          Write-Host 'Removing previous backup...'
-#          if (Test-Path $backup) {
-#            Remove-Item $backup -Force
-#          }
-          
           Write-Host "Backing up JAR..."
   
           if (!(Test-Path $jar)) {
             throw ("Jar not found: " + $jar)
           }
-
-#          Rename-Item -Path $jar -NewName eureka-service-old.jar -ErrorAction Stop
-#          if (!(Test-Path $backup)) {
-#              throw "Backup was not created."
-#          }
         
           if (Test-Path $jar) {
               throw "Original JAR still exists."
