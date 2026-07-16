@@ -271,14 +271,15 @@ jobs:
           Write-Host "Backing up JAR..."
   
           if (!(Test-Path $jar)) {
-            throw "$jar does not exist."
+            throw ("Jar not found: " + $jar)
           }
 
           Rename-Item -Path $jar -NewName "eureka-service-old.jar"
 
           Write-Host "========== AFTER =========="
           Get-ChildItem C:\java-webservices\eureka_service
-
+          Write-Host 'Backup completed.'
+          EOF
 #          Write-Host 'Removing previous backup...'
 #
 #          if (Test-Path "C:\java-webservices\eureka_service\eureka-service-old.jar") {
@@ -294,8 +295,7 @@ jobs:
 #              throw "Service did not stop."
 #          }
 #          Get-ChildItem C:\java-webservices\eureka_service
-          Write-Host 'Backup completed.'
-          EOF
+
 
       #######################################################
       # Upload new JAR
