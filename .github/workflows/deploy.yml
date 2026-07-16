@@ -279,13 +279,13 @@ jobs:
           Write-Host "========== AFTER =========="
           Get-ChildItem C:\java-webservices\eureka_service
 
-          Write-Host 'Removing previous backup...'
+#          Write-Host 'Removing previous backup...'
+#
+#          if (Test-Path "C:\java-webservices\eureka_service\eureka-service-old.jar") {
+#              Remove-Item "C:\java-webservices\eureka_service\eureka-service-old.jar" -Force
+#          }
 
-          if (Test-Path "C:\java-webservices\eureka_service\eureka-service-old.jar") {
-              Remove-Item "C:\java-webservices\eureka_service\eureka-service-old.jar" -Force
-          }
-
-          Write-Host 'Backing up current JAR...'
+#          Write-Host 'Backing up current JAR...'
 
 #          if (Test-Path "C:\java-webservices\eureka_service\eureka-service.jar") {
 #              Rename-Item "C:\java-webservices\eureka_service\eureka-service.jar" "eureka-service-old.jar"
@@ -293,7 +293,7 @@ jobs:
 #          if (Get-Service -Name "Eureka-Service").Status -ne "Stopped") {
 #              throw "Service did not stop."
 #          }
-          Get-ChildItem C:\java-webservices\eureka_service
+#          Get-ChildItem C:\java-webservices\eureka_service
           Write-Host 'Backup completed.'
           EOF
 
