@@ -263,7 +263,8 @@ jobs:
           }
 
           Write-Host "Jar exists? $(Test-Path $jar)"
-
+          
+          Write-Host 'Removing previous backup...'
           if (Test-Path $backup) {
             Remove-Item $backup -Force
           }
@@ -280,22 +281,6 @@ jobs:
           Get-ChildItem C:\java-webservices\eureka_service
           Write-Host 'Backup completed.'
           EOF
-#          Write-Host 'Removing previous backup...'
-#
-#          if (Test-Path "C:\java-webservices\eureka_service\eureka-service-old.jar") {
-#              Remove-Item "C:\java-webservices\eureka_service\eureka-service-old.jar" -Force
-#          }
-
-#          Write-Host 'Backing up current JAR...'
-
-#          if (Test-Path "C:\java-webservices\eureka_service\eureka-service.jar") {
-#              Rename-Item "C:\java-webservices\eureka_service\eureka-service.jar" "eureka-service-old.jar"
-#          }
-#          if (Get-Service -Name "Eureka-Service").Status -ne "Stopped") {
-#              throw "Service did not stop."
-#          }
-#          Get-ChildItem C:\java-webservices\eureka_service
-
 
       #######################################################
       # Upload new JAR
@@ -306,6 +291,18 @@ jobs:
             -o StrictHostKeyChecking=no \
             app.jar \
             "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/eureka-service.jar"
+
+      #######################################################
+      # Verify After Upload
+      #######################################################
+      - name: Verify after upload
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            powershell -Command "
+              Get-ChildItem C:\java-webservices\eureka_service
+            "
 
       #######################################################
       # Start Windows service
