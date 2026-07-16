@@ -230,153 +230,66 @@ jobs:
       # Stop service and backup current JAR
       #######################################################
       - name: Stop Service and Backup JAR
-        shell: bash
         run: |
           ssh -i ~/.ssh/id_rsa \
-          -o StrictHostKeyChecking=no \
-          ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-          "powershell -NoProfile -ExecutionPolicy Bypass -" <<'EOF'
-          
-          $ErrorActionPreference = "Stop"
-          
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+          $ErrorActionPreference='Stop'
+
           $jar = "C:\java-webservices\eureka_service\eureka-service.jar"
           $backup = "C:\java-webservices\eureka_service\eureka-service-old.jar"
-          
-          Write-Host "========== STOP SERVICE =========="
-          
-          $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
-          
-          Write-Host "Current Status: $($service.Status)"
-          
-          if ($service.Status -eq "Running") {
-           Stop-Service -Name "Eureka-Service" -Force
-           $service.WaitForStatus("Stopped","00:00:30")
-          }
-          
-          $service = Get-Service -Name "Eureka-Service"
-          
-          if ($service.Status -ne "Stopped") {
-           throw "Failed to stop service."
-          }
-          
-          Write-Host "Service stopped."
-          
-          Write-Host ""
-          Write-Host "========== CHECK FOR JAVA PROCESS =========="
-          
-          $javaProcesses = Get-CimInstance Win32_Process |
-           Where-Object {
-               $_.Name -eq "java.exe" -and
-               $_.CommandLine -match "eureka-service.jar"
-           }
-          
-          if ($javaProcesses) {
-          
-           Write-Host "Java process still running. Killing..."
-          
-           foreach ($proc in $javaProcesses) {
-               Write-Host "Stopping PID $($proc.ProcessId)"
-               Stop-Process -Id $proc.ProcessId -Force
-           }
-          
-           Start-Sleep -Seconds 5
-          }
-          
-          $javaProcesses = Get-CimInstance Win32_Process |
-           Where-Object {
-               $_.Name -eq "java.exe" -and
-               $_.CommandLine -match "eureka-service.jar"
-           }
-          
-          if ($javaProcesses) {
-           throw "Java process is still running after Stop-Process."
-          }
-          
-          Write-Host "No Java process is locking the JAR."
-          
-          Write-Host ""
-          Write-Host "========== BACKUP =========="
-          
-          if (Test-Path $backup) {
-           Remove-Item $backup -Force
-          }
-          
-          if (!(Test-Path $jar)) {
-           throw "Application JAR not found."
-          }
-          
-          Rename-Item -Path $jar -NewName "eureka-service-old.jar" -ErrorAction Stop
-          
-          if (!(Test-Path $backup)) {
-           throw "Backup JAR was not created."
-          }
-          
-          Write-Host "Backup completed successfully."
-          
+
+          Write-Host "========== BEFORE =========="
           Get-ChildItem C:\java-webservices\eureka_service
-          
+
+          Write-Host 'Stopping Windows service...'
+
+          $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
+
+           Write-Host "Current Status: $($service.Status)"
+
+          if ($service.Status -eq "Running") {
+            Stop-Service -Name "Eureka-Service" -Force
+            $service.WaitForStatus("Stopped","00:00:30")
+          }
+
+          $service = Get-Service "Eureka-Service"
+
+          Write-Host "Status after stop: $($service.Status)"
+
+          if ($service.Status -ne "Stopped") {
+            throw "Service failed to stop."
+          }
+
+          Write-Host "Jar exists? $(Test-Path $jar)"
+
+          if (Test-Path $backup) {
+            Remove-Item $backup -Force
+          }
+
+          Rename-Item -Path $jar -NewName "eureka-service-old.jar" -ErrorAction Stop
+
+          Write-Host "========== AFTER =========="
+          Get-ChildItem C:\java-webservices\eureka_service
+
+          Write-Host 'Removing previous backup...'
+
+          if (Test-Path "C:\java-webservices\eureka_service\eureka-service-old.jar") {
+              Remove-Item "C:\java-webservices\eureka_service\eureka-service-old.jar" -Force
+          }
+
+          Write-Host 'Backing up current JAR...'
+
+          if (Test-Path "C:\java-webservices\eureka_service\eureka-service.jar") {
+              Rename-Item "C:\java-webservices\eureka_service\eureka-service.jar" "eureka-service-old.jar"
+          }
+          if (Get-Service -Name "Eureka-Service").Status -ne "Stopped") {
+              throw "Service did not stop."
+          }
+
+          Write-Host 'Backup completed.'
           EOF
-#      - name: Stop Service and Backup JAR
-#        run: |
-#          ssh -i ~/.ssh/id_rsa \
-#            -o StrictHostKeyChecking=no \
-#            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-#            "powershell -NoProfile -NonInteractive -" <<'EOF'
-#          $ErrorActionPreference='Stop'
-#
-#          $jar = "C:\java-webservices\eureka_service\eureka-service.jar"
-#          $backup = "C:\java-webservices\eureka_service\eureka-service-old.jar"
-#
-#          Write-Host "========== BEFORE =========="
-#          Get-ChildItem C:\java-webservices\eureka_service
-#
-#          Write-Host 'Stopping Windows service...'
-#
-#          $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
-#
-#           Write-Host "Current Status: $($service.Status)"
-#
-#          if ($service.Status -eq "Running") {
-#            Stop-Service -Name "Eureka-Service" -Force
-#            $service.WaitForStatus("Stopped","00:00:30")
-#          }
-#
-#          $service = Get-Service "Eureka-Service"
-#
-#          Write-Host "Status after stop: $($service.Status)"
-#
-#          if ($service.Status -ne "Stopped") {
-#            throw "Service failed to stop."
-#          }
-#
-#          Write-Host "Jar exists? $(Test-Path $jar)"
-#
-#          if (Test-Path $backup) {
-#            Remove-Item $backup -Force
-#          }
-#
-#          Rename-Item -Path $jar -NewName "eureka-service-old.jar" -ErrorAction Stop
-#
-#          Write-Host "========== AFTER =========="
-#          Get-ChildItem C:\java-webservices\eureka_service
-#
-#          Write-Host 'Removing previous backup...'
-#
-#          if (Test-Path "C:\java-webservices\eureka_service\eureka-service-old.jar") {
-#              Remove-Item "C:\java-webservices\eureka_service\eureka-service-old.jar" -Force
-#          }
-#
-#          Write-Host 'Backing up current JAR...'
-#
-#          if (Test-Path "C:\java-webservices\eureka_service\eureka-service.jar") {
-#              Rename-Item "C:\java-webservices\eureka_service\eureka-service.jar" "eureka-service-old.jar"
-#          }
-#          if (Get-Service -Name "Eureka-Service").Status -ne "Stopped") {
-#              throw "Service did not stop."
-#          }
-#
-#          Write-Host 'Backup completed.'
-#          EOF
 
       #######################################################
       # Upload new JAR
@@ -426,6 +339,99 @@ jobs:
 
             Get-ChildItem C:\java-webservices\eureka_service\*.jar
           "
+          
+          
+          
+
+#      - name: Stop Service and Backup JAR
+#        shell: bash
+#        run: |
+#          ssh -i ~/.ssh/id_rsa \
+#          -o StrictHostKeyChecking=no \
+#          ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+#          "powershell -NoProfile -ExecutionPolicy Bypass -" <<'EOF'
+#
+#          $ErrorActionPreference = "Stop"
+#
+#          $jar = "C:\java-webservices\eureka_service\eureka-service.jar"
+#          $backup = "C:\java-webservices\eureka_service\eureka-service-old.jar"
+#
+#          Write-Host "========== STOP SERVICE =========="
+#
+#          $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
+#
+#          Write-Host "Current Status: $($service.Status)"
+#
+#          if ($service.Status -eq "Running") {
+#           Stop-Service -Name "Eureka-Service" -Force
+#           $service.WaitForStatus("Stopped","00:00:30")
+#          }
+#
+#          $service = Get-Service -Name "Eureka-Service"
+#
+#          if ($service.Status -ne "Stopped") {
+#           throw "Failed to stop service."
+#          }
+#
+#          Write-Host "Service stopped."
+#
+#          Write-Host ""
+#          Write-Host "========== CHECK FOR JAVA PROCESS =========="
+#
+#          $javaProcesses = Get-CimInstance Win32_Process |
+#           Where-Object {
+#               $_.Name -eq "java.exe" -and
+#               $_.CommandLine -match "eureka-service.jar"
+#           }
+#
+#          if ($javaProcesses) {
+#
+#           Write-Host "Java process still running. Killing..."
+#
+#           foreach ($proc in $javaProcesses) {
+#               Write-Host "Stopping PID $($proc.ProcessId)"
+#               Stop-Process -Id $proc.ProcessId -Force
+#           }
+#
+#           Start-Sleep -Seconds 5
+#          }
+#
+#          $javaProcesses = Get-CimInstance Win32_Process |
+#           Where-Object {
+#               $_.Name -eq "java.exe" -and
+#               $_.CommandLine -match "eureka-service.jar"
+#           }
+#
+#          if ($javaProcesses) {
+#           throw "Java process is still running after Stop-Process."
+#          }
+#
+#          Write-Host "No Java process is locking the JAR."
+#
+#          Write-Host ""
+#          Write-Host "========== BACKUP =========="
+#
+#          if (Test-Path $backup) {
+#           Remove-Item $backup -Force
+#          }
+#
+#          if (!(Test-Path $jar)) {
+#           throw "Application JAR not found."
+#          }
+#
+#          Rename-Item -Path $jar -NewName "eureka-service-old.jar" -ErrorAction Stop
+#
+#          if (!(Test-Path $backup)) {
+#           throw "Backup JAR was not created."
+#          }
+#
+#          Write-Host "Backup completed successfully."
+#
+#          Get-ChildItem C:\java-webservices\eureka_service
+#
+#          EOF
+
+
 #      # ==========================
 #      # Upload JAR
 #      # ==========================
