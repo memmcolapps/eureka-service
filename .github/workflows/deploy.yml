@@ -222,12 +222,20 @@ jobs:
       # ==========================
       - name: Create deployment directory
         run: |
-          ssh -o StrictHostKeyChecking=no \
-          ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-          "powershell -Command \"New-Item -ItemType Directory -Force -Path 'C:\java-webservices\eureka_service'\""
-          if (!(Test-Path "C:\java-webservices\eureka_service")) {
-            throw "Deployment directory was not created."
-          }
+          ssh -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -Command \"
+              \$ErrorActionPreference='Stop'
+      
+              New-Item -ItemType Directory -Force -Path 'C:\java-webservices\eureka_service' | Out-Null
+      
+              if (!(Test-Path 'C:\java-webservices\eureka_service')) {
+              throw 'Deployment directory was not created.'
+            }
+    
+              Write-Host 'Deployment directory verified.'
+            \""
 
       #######################################################
       # Stop service and backup current JAR
@@ -343,7 +351,9 @@ jobs:
       #######################################################
       - name: Start Service
         run: |
-          ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
+          ssh -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
             \$ErrorActionPreference='Stop'
 
             Write-Host 'Starting Windows service...'
@@ -389,7 +399,9 @@ jobs:
       #######################################################
       - name: Verify Deployment
         run: |
-          ssh ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
+          ssh -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
             Get-Service -Name 'Eureka-Service'
 
             Write-Host ''
