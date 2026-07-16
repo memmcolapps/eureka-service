@@ -253,7 +253,7 @@ jobs:
           $ErrorActionPreference='Stop'
 
           $jar = "C:\java-webservices\eureka_service\eureka-service.jar"
-          $backup = "C:\java-webservices\eureka_service\eureka-service-old.jar"
+#          $backup = "C:\java-webservices\eureka_service\eureka-service-old.jar"
 
           Write-Host "========== BEFORE =========="
           Get-ChildItem C:\java-webservices\eureka_service
@@ -314,10 +314,10 @@ jobs:
 
           Write-Host "Jar exists? $(Test-Path $jar)"
           
-          Write-Host 'Removing previous backup...'
-          if (Test-Path $backup) {
-            Remove-Item $backup -Force
-          }
+#          Write-Host 'Removing previous backup...'
+#          if (Test-Path $backup) {
+#            Remove-Item $backup -Force
+#          }
           
           Write-Host "Backing up JAR..."
   
@@ -325,10 +325,10 @@ jobs:
             throw ("Jar not found: " + $jar)
           }
 
-          Rename-Item -Path $jar -NewName "eureka-service-old.jar" -ErrorAction Stop
-          if (!(Test-Path $backup)) {
-              throw "Backup was not created."
-          }
+#          Rename-Item -Path $jar -NewName eureka-service-old.jar -ErrorAction Stop
+#          if (!(Test-Path $backup)) {
+#              throw "Backup was not created."
+#          }
         
           if (Test-Path $jar) {
               throw "Original JAR still exists."
@@ -349,7 +349,7 @@ jobs:
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             app.jar \
-            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/app-new.jar"
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/eureka-service.jar"
 
       #######################################################
       # Verify After Upload
@@ -379,11 +379,11 @@ jobs:
           
             $ErrorActionPreference='Stop'
 
-            Write-Host "Renaming app-new.jar..."
-            Rename-Item `
-              "C:\java-webservices\eureka_service\app-new.jar" `
-              "eureka-service.jar" `
-              -ErrorAction Stop
+#            Write-Host "Renaming app-new.jar..."
+#            Rename-Item `
+#              "C:\java-webservices\eureka_service\app-new.jar" `
+#              "eureka-service.jar" `
+#              -ErrorAction Stop
           
             if (!(Test-Path "C:\java-webservices\eureka_service\eureka-service.jar")) {
                 throw "Deployment JAR missing."
