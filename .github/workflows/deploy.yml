@@ -342,6 +342,8 @@ jobs:
         run: |
           scp -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
             app.jar \
             "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/java-webservices/eureka_service/app-new.jar"
 
@@ -352,6 +354,8 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             powershell -Command "
               Get-ChildItem C:\java-webservices\eureka_service
@@ -364,6 +368,8 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}
             \$ErrorActionPreference='Stop'
 
@@ -412,6 +418,8 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} powershell -Command "
             Get-Service -Name 'Eureka-Service'
 
