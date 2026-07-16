@@ -268,27 +268,38 @@ jobs:
           $service = Get-Service "Eureka-Service"
           
           Write-Host "Waiting for java.exe to exit..."
-  
+          
           $timeout = 30
+  
+          do {
           
-          while ($timeout -gt 0) {
+            $java = Get-CimInstance Win32_Process |
+              Where-Object {
+                $_.Name -eq "java.exe" -and
+                $_.CommandLine -like "*eureka-service.jar*"
+          }
           
-              $java = Get-CimInstance Win32_Process |
-                Where-Object {
-                  $_.Name -eq "java.exe" -and
-                  $_.CommandLine -like "*eureka-service.jar*"
-                }
-              
-            if (-not $java) {
-              break
-            }
-              
-              Start-Sleep -Seconds 1
-              $timeout--
-            }
-              
-              if ($java) {
-              throw "Java process is still running."
+          if (-not $java) {
+            break
+          }
+        
+          Write-Host "Waiting for PID(s): $($java.ProcessId -join ', ')"
+          
+          Start-Sleep -Seconds 1
+          
+          $timeout--
+        
+          } while ($timeout -gt 0)
+            
+            # Refresh one last time
+            $java = Get-CimInstance Win32_Process |
+              Where-Object {
+                $_.Name -eq "java.exe" -and
+                $_.CommandLine -like "*eureka-service.jar*"
+          }
+          
+          if ($java) {
+            throw "Java process still running. PID(s): $($java.ProcessId -join ', ')"
           }
 
           Write-Host "Status after stop: $($service.Status)"
