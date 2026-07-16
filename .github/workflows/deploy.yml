@@ -250,83 +250,87 @@ jobs:
             -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             "powershell -NoProfile -NonInteractive -" <<'EOF'
-          $ErrorActionPreference='Stop'
-
-          $jar = "C:\java-webservices\eureka_service\eureka-service.jar"
-               
-
-          Write-Host "========== BEFORE =========="
-          Get-ChildItem C:\java-webservices\eureka_service
-
-          Write-Host 'Stopping service...'
-
-          $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
-
-          Write-Host "Current Status: $($service.Status)"
-
-          if ($service.Status -eq "Running") {
-            Stop-Service -Name "Eureka-Service" -Force
-            $service.WaitForStatus("Stopped","00:00:30")
-          }
-
-          $service = Get-Service "Eureka-Service"
-          
-          Write-Host "Waiting for java.exe to exit..."
-          
-          $timeout = 30
+            $ErrorActionPreference='Stop'
   
-          do {
+            $jar = "C:\java-webservices\eureka_service\eureka-service.jar"
+                 
+  
+            Write-Host "========== BEFORE =========="
+            Get-ChildItem C:\java-webservices\eureka_service
+  
+            $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
+  
+            Write-Host "Current Status: $($service.Status)"
+  
+            if ($service.Status -eq "Running") {
+              Write-Host 'Stopping service...'
+              Stop-Service -Name "Eureka-Service" -Force
+              $service.WaitForStatus("Stopped","00:00:30")
+            }
           
-            $java = Get-CimInstance Win32_Process |
-              Where-Object {
-                $_.Name -eq "java.exe" -and
-                $_.CommandLine -like "*eureka-service.jar*"
-          }
+            $service = Get-Service -Name "Eureka-Service"
           
-          if (-not $java) {
-            break
-          }
-        
-          Write-Host "Waiting for PID(s): $($java.ProcessId -join ', ')"
-          
-          Start-Sleep -Seconds 1
-          
-          $timeout--
-        
-          } while ($timeout -gt 0)
+            Write-Host "Service Status: $($service.Status)"
+             
+            $service = Get-Service "Eureka-Service"
             
-            # Refresh one last time
-            $java = Get-CimInstance Win32_Process |
-              Where-Object {
-                $_.Name -eq "java.exe" -and
-                $_.CommandLine -like "*eureka-service.jar*"
-          }
-          
-          if ($java) {
-            throw "Java process still running. PID(s): $($java.ProcessId -join ', ')"
-          }
-
-          Write-Host "Status after stop: $($service.Status)"
-
-          if ($service.Status -ne "Stopped") {
-            throw "Service failed to stop."
-          }
-
-          Write-Host "Jar exists? $(Test-Path $jar)"
-          
-          Write-Host "Backing up JAR..."
-  
-          if (!(Test-Path $jar)) {
-            throw ("Jar not found: " + $jar)
-          }
+            Write-Host "Waiting for java.exe to exit..."
+            
+            $timeout = 30
+    
+            do {
+            
+              $java = Get-CimInstance Win32_Process |
+                Where-Object {
+                  $_.Name -eq "java.exe" -and
+                  $_.CommandLine -like "*eureka-service.jar*"
+            }
         
-          if (Test-Path $jar) {
-              throw "Original JAR still exists."
-          }
+            if (-not $java) {
+              break
+            }
           
-          Write-Host "========== AFTER =========="
-          Get-ChildItem C:\java-webservices\eureka_service
-          Write-Host 'Backup completed.'
+            Write-Host "Waiting for PID(s): $($java.ProcessId -join ', ')"
+            
+            Start-Sleep -Seconds 1
+            
+            $timeout--
+          
+            } while ($timeout -gt 0)
+              
+              # Refresh one last time
+              $java = Get-CimInstance Win32_Process |
+                Where-Object {
+                  $_.Name -eq "java.exe" -and
+                  $_.CommandLine -like "*eureka-service.jar*"
+            }
+            
+            if ($java) {
+              throw "Java process still running. PID(s): $($java.ProcessId -join ', ')"
+            }
+  
+            Write-Host "Status after stop: $($service.Status)"
+  
+            if ($service.Status -ne "Stopped") {
+              Write-Host 'Service fail to stop...'
+              throw "Service failed to stop."
+            }
+  
+            Write-Host "Jar exists? $(Test-Path $jar)"
+            
+            Write-Host "Backing up JAR..."
+    
+            if (!(Test-Path $jar)) {
+              throw ("Jar not found: " + $jar)
+            }
+          
+            if (Test-Path $jar) {
+                throw "Original JAR still exists."
+            }
+            
+            Write-Host "========== AFTER =========="
+            Get-ChildItem C:\java-webservices\eureka_service
+            Write-Host 'Backup completed.'
           EOF
 
       #######################################################
