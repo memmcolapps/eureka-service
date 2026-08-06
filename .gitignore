@@ -58,3 +58,5 @@ build/
 hs_err_pid*
 replay_pid*
 >>>>>>> efb1a2d779e4658e60bbe9f2fc38d9075aa33f7b
+
+src/main/resources/application-dev.properties
