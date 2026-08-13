@@ -97,7 +97,7 @@ jobs:
             echo "Starting app..."
 
             nohup java -Dspring.profiles.active=staging \
-              -jar /opt/java-webservices/eureka-service.jar 
+              -jar /opt/java-webservices/eureka-service.jar \
               >/dev/null 2>&1 < /dev/null &
 
             echo "Deployment complete"
@@ -148,7 +148,8 @@ jobs:
             echo "Starting app..."
 
             nohup java -Dspring.profiles.active=prod \
-              -jar /opt/java-webservices/eureka-service.jar &
+              -jar /opt/java-webservices/eureka-service.jar \
+              >/dev/null 2>&1 < /dev/null &
 
             echo "Deployment complete"
           EOF
