@@ -76,10 +76,6 @@ jobs:
           echo "Creating remote directory..."
           ssh -o StrictHostKeyChecking=no "$SERVER" \
             "mkdir -p '$REMOTE_DIR'"
-          
-          echo "Stopping service..."
-          ssh -o StrictHostKeyChecking=no "$SERVER" \
-            "sudo systemctl stop eureka"
 
            echo "Uploading JAR..."
           rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
