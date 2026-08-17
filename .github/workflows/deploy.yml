@@ -81,11 +81,10 @@ jobs:
           ssh -o StrictHostKeyChecking=no "$SERVER" \
             "sudo systemctl stop eureka"
 
-          echo "Uploading JAR..."
-          rsync -az \
-            -e "ssh -o StrictHostKeyChecking=no" \
+           echo "Uploading JAR..."
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
             "$JAR_FILE" \
-            "$SERVER:$REMOTE_PATH"
+            $SERVER:$REMOTE_PATH
 
           echo "Starting service..."
           ssh -o StrictHostKeyChecking=no "$SERVER" \
