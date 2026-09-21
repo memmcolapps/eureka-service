@@ -150,658 +150,658 @@ jobs:
 
 
   deploy-alfuttaim:
-  if: github.ref == 'refs/heads/alfuttaim'
-  runs-on: ubuntu-latest
-
-  steps:
-
-    # ============================================================
-    # Checkout
-    # ============================================================
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-
-
-    # ============================================================
-    # Setup Java
-    # ============================================================
-    - name: Setup JDK 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: '17'
-        cache: maven
-
-
-    # ============================================================
-    # Build Application
-    # ============================================================
-    - name: Build Application
-      run: mvn clean package -DskipTests
-
-
-    # ============================================================
-    # Locate JAR
-    # ============================================================
-    - name: Locate JAR
-      shell: bash
-      run: |
-        JAR=$(find . -type f -path "*/target/*.jar" \
-          ! -name "*sources.jar" \
-          ! -name "*javadoc.jar" \
-          | head -n 1)
-
-        if [ -z "$JAR" ]; then
-          echo "ERROR: No executable JAR found."
-          exit 1
-        fi
-
-        echo "Using JAR: $JAR"
-
-        cp "$JAR" app.jar
-
-        ls -lh app.jar
-
-
-    # ============================================================
-    # Configure SSH
-    # ============================================================
-    - name: Configure SSH
-      shell: bash
-      run: |
-        mkdir -p ~/.ssh
-
-        echo "${{ secrets.WINDOW_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-
-        chmod 600 ~/.ssh/id_rsa
-
-        ssh-keyscan -H \
-          "${{ secrets.WINDOW_SERVER_HOST }}" \
-          >> ~/.ssh/known_hosts
-
-        echo "SSH configured."
-
-
-    # ============================================================
-    # Test SSH
-    # ============================================================
-    - name: Test SSH Authentication
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o BatchMode=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "whoami"
-
-
-    # ============================================================
-    # Verify WinSW exists in repository
-    # ============================================================
-    - name: Verify WinSW Wrapper
-      shell: bash
-      run: |
-        if [ ! -f "deployment/eureka-service.exe" ]; then
-          echo "ERROR: deployment/eureka-service.exe not found."
-          exit 1
-        fi
-
-        echo "WinSW wrapper found."
-
-
-    # ============================================================
-    # Create WinSW XML locally
-    # ============================================================
-    - name: Create WinSW Configuration
-      shell: bash
-      run: |
-        cat > deployment/eureka-service.xml <<EOF
-        <service>
-            <id>Eureka-Service</id>
-            <name>Eureka-Service</name>
-            <description>Travana Eureka Service</description>
-
-            <executable>java</executable>
-
-            <arguments>-jar "C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.jar"</arguments>
-
-            <workingdirectory>C:\${{ secrets.WIN_LOCATION }}\eureka_service</workingdirectory>
-
-            <logpath>C:\${{ secrets.WIN_LOCATION }}\eureka_service\logs</logpath>
-
-            <log mode="roll"/>
-
-            <onfailure action="restart" delay="10 sec"/>
-            <onfailure action="restart" delay="30 sec"/>
-            <onfailure action="restart" delay="60 sec"/>
-
-            <startmode>Automatic</startmode>
-        </service>
-        EOF
-
-        echo "WinSW configuration created."
-
-
-    # ============================================================
-    # Upload deployment files
-    #
-    # We upload these into a temporary folder first.
-    # The Windows deployment script decides whether they are needed.
-    # ============================================================
-    - name: Create Remote Temporary Directory
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"New-Item -ItemType Directory -Force -Path 'C:\travana-deploy-temp' | Out-Null\""
-
-
-    - name: Upload Deployment Files
-      shell: bash
-      run: |
-        scp \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          deployment/eureka-service.exe \
-          deployment/eureka-service.xml \
-          app.jar \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/travana-deploy-temp/"
-
-
-    # ============================================================
-    # Create Windows deployment script
-    # ============================================================
-    - name: Create Windows Deployment Script
-      shell: bash
-      run: |
-        cat > deployment/deploy-eureka.ps1 <<'POWERSHELL'
-
-        $ErrorActionPreference = "Stop"
-
-        # ========================================================
-        # Configuration
-        # ========================================================
-
-        $base = "C:\${{ secrets.WIN_LOCATION }}\eureka_service"
-
-        $temp = "C:\travana-deploy-temp"
-
-        $wrapper = Join-Path $base "eureka-service.exe"
-
-        $config = Join-Path $base "eureka-service.xml"
-
-        $jar = Join-Path $base "eureka-service.jar"
-
-        $logs = Join-Path $base "logs"
-
-        $serviceName = "Eureka-Service"
-
-
-        Write-Host ""
-        Write-Host "============================================"
-        Write-Host "Travana Eureka Deployment"
-        Write-Host "============================================"
-
-        Write-Host ""
-        Write-Host "Deployment directory:"
-        Write-Host $base
-
-
-        # ========================================================
-        # Create deployment directory if missing
-        # ========================================================
-
-        if (!(Test-Path -LiteralPath $base -PathType Container)) {
-
-            Write-Host ""
-            Write-Host "Deployment directory does not exist."
-            Write-Host "Creating..."
-
-            New-Item `
-                -ItemType Directory `
-                -Path $base `
-                -Force | Out-Null
-
-        }
-        else {
-
-            Write-Host ""
-            Write-Host "Deployment directory already exists."
-            Write-Host "Nothing to create."
-
-        }
-
-
-        # ========================================================
-        # Create logs directory if missing
-        # ========================================================
-
-        if (!(Test-Path -LiteralPath $logs -PathType Container)) {
-
-            Write-Host ""
-            Write-Host "Logs directory does not exist."
-            Write-Host "Creating..."
-
-            New-Item `
-                -ItemType Directory `
-                -Path $logs `
-                -Force | Out-Null
-
-        }
-        else {
-
-            Write-Host ""
-            Write-Host "Logs directory already exists."
-            Write-Host "Nothing to create."
-
-        }
-
-
-        # ========================================================
-        # WinSW wrapper
-        # ========================================================
-
-        if (!(Test-Path -LiteralPath $wrapper -PathType Leaf)) {
-
-            Write-Host ""
-            Write-Host "WinSW wrapper does not exist."
-            Write-Host "Installing wrapper..."
-
-            Copy-Item `
-                -LiteralPath (Join-Path $temp "eureka-service.exe") `
-                -Destination $wrapper `
-                -Force
-
-        }
-        else {
-
-            Write-Host ""
-            Write-Host "WinSW wrapper already exists."
-            Write-Host "Skipping wrapper upload."
-
-        }
-
-
-        # ========================================================
-        # WinSW configuration
-        # ========================================================
-
-        if (!(Test-Path -LiteralPath $config -PathType Leaf)) {
-
-            Write-Host ""
-            Write-Host "WinSW configuration does not exist."
-            Write-Host "Installing configuration..."
-
-            Copy-Item `
-                -LiteralPath (Join-Path $temp "eureka-service.xml") `
-                -Destination $config `
-                -Force
-
-        }
-        else {
-
-            Write-Host ""
-            Write-Host "WinSW configuration already exists."
-            Write-Host "Skipping configuration upload."
-
-        }
-
-
-        # ========================================================
-        # Verify WinSW files
-        # ========================================================
-
-        if (!(Test-Path -LiteralPath $wrapper -PathType Leaf)) {
-
-            throw "WinSW wrapper does not exist: $wrapper"
-
-        }
-
-
-        if (!(Test-Path -LiteralPath $config -PathType Leaf)) {
-
-            throw "WinSW configuration does not exist: $config"
-
-        }
-
-
-        # ========================================================
-        # Check existing service
-        # ========================================================
-
-        $service = Get-Service `
-            -Name $serviceName `
-            -ErrorAction SilentlyContinue
-
-
-        if ($service) {
-
-            Write-Host ""
-            Write-Host "Eureka-Service already exists."
-
-            Write-Host "Current status:"
-            Write-Host $service.Status
-
-
-            # ====================================================
-            # Stop service if running
-            # ====================================================
-
-            if ($service.Status -eq "Running") {
-
-                Write-Host ""
-                Write-Host "Stopping Eureka-Service..."
-
-                Stop-Service `
-                    -Name $serviceName `
-                    -Force
-
-                $timeout = 30
-
-                while ($timeout -gt 0) {
-
-                    $service = Get-Service `
-                        -Name $serviceName
-
-                    if ($service.Status -eq "Stopped") {
-
-                        break
-
-                    }
-
-                    Start-Sleep -Seconds 1
-
-                    $timeout--
-
-                }
-
-
-                $service = Get-Service `
-                    -Name $serviceName
-
-
-                if ($service.Status -ne "Stopped") {
-
-                    throw "Eureka-Service could not be stopped."
-
-                }
-
-                Write-Host "Eureka-Service stopped."
-
-            }
-
-        }
-        else {
-
-            Write-Host ""
-            Write-Host "Eureka-Service is not installed."
-
-        }
-
-
-        # ========================================================
-        # Backup existing JAR
-        # ========================================================
-
-        if (Test-Path -LiteralPath $jar -PathType Leaf) {
-
-            $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-
-            $backup = Join-Path `
-                $base `
-                "eureka-service-$timestamp.jar"
-
-
-            Write-Host ""
-            Write-Host "Backing up existing JAR..."
-
-            Copy-Item `
-                -LiteralPath $jar `
-                -Destination $backup `
-                -Force
-
-
-            Write-Host "Backup created:"
-            Write-Host $backup
-
-        }
-        else {
-
-            Write-Host ""
-            Write-Host "No existing JAR."
-            Write-Host "This is the first deployment."
-
-        }
-
-
-        # ========================================================
-        # Upload new JAR
-        # ========================================================
-
-        Write-Host ""
-        Write-Host "Installing new JAR..."
-
-        Copy-Item `
-            -LiteralPath (Join-Path $temp "app.jar") `
-            -Destination $jar `
-            -Force
-
-
-        if (!(Test-Path -LiteralPath $jar -PathType Leaf)) {
-
-            throw "New JAR was not copied successfully."
-
-        }
-
-
-        Write-Host "New JAR installed."
-
-
-        # ========================================================
-        # Install service if missing
-        # ========================================================
-
-        $service = Get-Service `
-            -Name $serviceName `
-            -ErrorAction SilentlyContinue
-
-
-        if (!$service) {
-
-            Write-Host ""
-            Write-Host "Installing Eureka-Service..."
-
-            Push-Location $base
-
-            try {
-
-                & $wrapper install
-
-                if ($LASTEXITCODE -ne 0) {
-
-                    throw "WinSW service installation failed."
-
-                }
-
-            }
-            finally {
-
-                Pop-Location
-
-            }
-
-
-            Write-Host "Eureka-Service installed."
-
-        }
-        else {
-
-            Write-Host ""
-            Write-Host "Eureka-Service already installed."
-            Write-Host "Skipping installation."
-
-        }
-
-
-        # ========================================================
-        # Start service
-        # ========================================================
-
-        $service = Get-Service `
-            -Name $serviceName
-
-
-        if ($service.Status -ne "Running") {
-
-            Write-Host ""
-            Write-Host "Starting Eureka-Service..."
-
-            Start-Service `
-                -Name $serviceName
-
-
-            $timeout = 30
-
-            while ($timeout -gt 0) {
-
-                $service = Get-Service `
-                    -Name $serviceName
-
-                if ($service.Status -eq "Running") {
-
-                    break
-
-                }
-
-                Start-Sleep -Seconds 1
-
-                $timeout--
-
-            }
-
-        }
-
-
-        # ========================================================
-        # Final service verification
-        # ========================================================
-
-        $service = Get-Service `
-            -Name $serviceName
-
-
-        Write-Host ""
-        Write-Host "============================================"
-        Write-Host "Service Status"
-        Write-Host "============================================"
-
-        Write-Host $service.Status
-
-
-        if ($service.Status -ne "Running") {
-
-            throw "Eureka-Service is not running."
-
-        }
-
-
-        # ========================================================
-        # Final files
-        # ========================================================
-
-        Write-Host ""
-        Write-Host "============================================"
-        Write-Host "Deployment Files"
-        Write-Host "============================================"
-
-        Get-ChildItem `
-            -LiteralPath $base |
-            Select-Object Name, Length, LastWriteTime
-
-
-        # ========================================================
-        # Verify Java process
-        # ========================================================
-
-        Write-Host ""
-        Write-Host "============================================"
-        Write-Host "Eureka Java Process"
-        Write-Host "============================================"
-
-        $java = Get-CimInstance Win32_Process |
-            Where-Object {
-                $_.Name -eq "java.exe" -and
-                $_.CommandLine -like "*eureka-service.jar*"
-            }
-
-
-        if ($java) {
-
-            $java |
-                Select-Object ProcessId, CommandLine |
-                Format-List
-
-        }
-        else {
-
-            Write-Warning "Eureka Java process was not found."
-
-        }
-
-
-        # ========================================================
-        # Cleanup temporary deployment files
-        # ========================================================
-
-        Write-Host ""
-        Write-Host "Cleaning temporary deployment files..."
-
-        Remove-Item `
-            -LiteralPath $temp `
-            -Recurse `
-            -Force
-
-
-        Write-Host ""
-        Write-Host "============================================"
-        Write-Host "Deployment completed successfully."
-        Write-Host "============================================"
-
-        POWERSHELL
-
-
-    # ============================================================
-    # Upload Windows deployment script
-    # ============================================================
-    - name: Upload Windows Deployment Script
-      shell: bash
-      run: |
-        scp \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          deployment/deploy-eureka.ps1 \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/travana-deploy-temp/deploy-eureka.ps1"
-
-
-    # ============================================================
-    # Execute Windows Deployment Script
-    # ============================================================
-    - name: Deploy Eureka Service
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\travana-deploy-temp\deploy-eureka.ps1"
+    if: github.ref == 'refs/heads/alfuttaim'
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ============================================================
+      # Checkout
+      # ============================================================
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+
+      # ============================================================
+      # Setup Java
+      # ============================================================
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+
+      # ============================================================
+      # Build Application
+      # ============================================================
+      - name: Build Application
+        run: mvn clean package -DskipTests
+
+
+      # ============================================================
+      # Locate JAR
+      # ============================================================
+      - name: Locate JAR
+        shell: bash
+        run: |
+          JAR=$(find . -type f -path "*/target/*.jar" \
+            ! -name "*sources.jar" \
+            ! -name "*javadoc.jar" \
+            | head -n 1)
+  
+          if [ -z "$JAR" ]; then
+            echo "ERROR: No executable JAR found."
+            exit 1
+          fi
+  
+          echo "Using JAR: $JAR"
+  
+          cp "$JAR" app.jar
+  
+          ls -lh app.jar
+  
+
+      # ============================================================
+      # Configure SSH
+      # ============================================================
+      - name: Configure SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+  
+          echo "${{ secrets.WINDOW_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+  
+          chmod 600 ~/.ssh/id_rsa
+  
+          ssh-keyscan -H \
+            "${{ secrets.WINDOW_SERVER_HOST }}" \
+            >> ~/.ssh/known_hosts
+  
+          echo "SSH configured."
+  
+
+      # ============================================================
+      # Test SSH
+      # ============================================================
+      - name: Test SSH Authentication
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "whoami"
+  
+
+      # ============================================================
+      # Verify WinSW exists in repository
+      # ============================================================
+      - name: Verify WinSW Wrapper
+        shell: bash
+        run: |
+          if [ ! -f "deployment/eureka-service.exe" ]; then
+            echo "ERROR: deployment/eureka-service.exe not found."
+            exit 1
+          fi
+  
+          echo "WinSW wrapper found."
+  
+
+      # ============================================================
+      # Create WinSW XML locally
+      # ============================================================
+      - name: Create WinSW Configuration
+        shell: bash
+        run: |
+          cat > deployment/eureka-service.xml <<EOF
+          <service>
+              <id>Eureka-Service</id>
+              <name>Eureka-Service</name>
+              <description>Travana Eureka Service</description>
+  
+              <executable>java</executable>
+  
+              <arguments>-jar "C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.jar"</arguments>
+  
+              <workingdirectory>C:\${{ secrets.WIN_LOCATION }}\eureka_service</workingdirectory>
+  
+              <logpath>C:\${{ secrets.WIN_LOCATION }}\eureka_service\logs</logpath>
+  
+              <log mode="roll"/>
+  
+              <onfailure action="restart" delay="10 sec"/>
+              <onfailure action="restart" delay="30 sec"/>
+              <onfailure action="restart" delay="60 sec"/>
+  
+              <startmode>Automatic</startmode>
+          </service>
+          EOF
+  
+          echo "WinSW configuration created."
+  
+
+      # ============================================================
+      # Upload deployment files
+      #
+      # We upload these into a temporary folder first.
+      # The Windows deployment script decides whether they are needed.
+      # ============================================================
+      - name: Create Remote Temporary Directory
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"New-Item -ItemType Directory -Force -Path 'C:\travana-deploy-temp' | Out-Null\""
+  
+
+      - name: Upload Deployment Files
+        shell: bash
+        run: |
+          scp \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            deployment/eureka-service.exe \
+            deployment/eureka-service.xml \
+            app.jar \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/travana-deploy-temp/"
+  
+
+      # ============================================================
+      # Create Windows deployment script
+      # ============================================================
+      - name: Create Windows Deployment Script
+        shell: bash
+        run: |
+          cat > deployment/deploy-eureka.ps1 <<'POWERSHELL'
+  
+          $ErrorActionPreference = "Stop"
+  
+          # ========================================================
+          # Configuration
+          # ========================================================
+  
+          $base = "C:\${{ secrets.WIN_LOCATION }}\eureka_service"
+  
+          $temp = "C:\travana-deploy-temp"
+  
+          $wrapper = Join-Path $base "eureka-service.exe"
+  
+          $config = Join-Path $base "eureka-service.xml"
+  
+          $jar = Join-Path $base "eureka-service.jar"
+  
+          $logs = Join-Path $base "logs"
+  
+          $serviceName = "Eureka-Service"
+  
+  
+          Write-Host ""
+          Write-Host "============================================"
+          Write-Host "Travana Eureka Deployment"
+          Write-Host "============================================"
+  
+          Write-Host ""
+          Write-Host "Deployment directory:"
+          Write-Host $base
+  
+  
+          # ========================================================
+          # Create deployment directory if missing
+          # ========================================================
+  
+          if (!(Test-Path -LiteralPath $base -PathType Container)) {
+  
+              Write-Host ""
+              Write-Host "Deployment directory does not exist."
+              Write-Host "Creating..."
+  
+              New-Item `
+                  -ItemType Directory `
+                  -Path $base `
+                  -Force | Out-Null
+  
+          }
+          else {
+  
+              Write-Host ""
+              Write-Host "Deployment directory already exists."
+              Write-Host "Nothing to create."
+  
+          }
+  
+  
+          # ========================================================
+          # Create logs directory if missing
+          # ========================================================
+  
+          if (!(Test-Path -LiteralPath $logs -PathType Container)) {
+  
+              Write-Host ""
+              Write-Host "Logs directory does not exist."
+              Write-Host "Creating..."
+  
+              New-Item `
+                  -ItemType Directory `
+                  -Path $logs `
+                  -Force | Out-Null
+  
+          }
+          else {
+  
+              Write-Host ""
+              Write-Host "Logs directory already exists."
+              Write-Host "Nothing to create."
+  
+          }
+  
+  
+          # ========================================================
+          # WinSW wrapper
+          # ========================================================
+  
+          if (!(Test-Path -LiteralPath $wrapper -PathType Leaf)) {
+  
+              Write-Host ""
+              Write-Host "WinSW wrapper does not exist."
+              Write-Host "Installing wrapper..."
+  
+              Copy-Item `
+                  -LiteralPath (Join-Path $temp "eureka-service.exe") `
+                  -Destination $wrapper `
+                  -Force
+  
+          }
+          else {
+  
+              Write-Host ""
+              Write-Host "WinSW wrapper already exists."
+              Write-Host "Skipping wrapper upload."
+  
+          }
+  
+  
+          # ========================================================
+          # WinSW configuration
+          # ========================================================
+  
+          if (!(Test-Path -LiteralPath $config -PathType Leaf)) {
+  
+              Write-Host ""
+              Write-Host "WinSW configuration does not exist."
+              Write-Host "Installing configuration..."
+  
+              Copy-Item `
+                  -LiteralPath (Join-Path $temp "eureka-service.xml") `
+                  -Destination $config `
+                  -Force
+  
+          }
+          else {
+  
+              Write-Host ""
+              Write-Host "WinSW configuration already exists."
+              Write-Host "Skipping configuration upload."
+  
+          }
+  
+  
+          # ========================================================
+          # Verify WinSW files
+          # ========================================================
+  
+          if (!(Test-Path -LiteralPath $wrapper -PathType Leaf)) {
+  
+              throw "WinSW wrapper does not exist: $wrapper"
+  
+          }
+  
+  
+          if (!(Test-Path -LiteralPath $config -PathType Leaf)) {
+  
+              throw "WinSW configuration does not exist: $config"
+  
+          }
+  
+  
+          # ========================================================
+          # Check existing service
+          # ========================================================
+  
+          $service = Get-Service `
+              -Name $serviceName `
+              -ErrorAction SilentlyContinue
+  
+  
+          if ($service) {
+  
+              Write-Host ""
+              Write-Host "Eureka-Service already exists."
+  
+              Write-Host "Current status:"
+              Write-Host $service.Status
+  
+  
+              # ====================================================
+              # Stop service if running
+              # ====================================================
+  
+              if ($service.Status -eq "Running") {
+  
+                  Write-Host ""
+                  Write-Host "Stopping Eureka-Service..."
+  
+                  Stop-Service `
+                      -Name $serviceName `
+                      -Force
+  
+                  $timeout = 30
+  
+                  while ($timeout -gt 0) {
+  
+                      $service = Get-Service `
+                          -Name $serviceName
+  
+                      if ($service.Status -eq "Stopped") {
+  
+                          break
+  
+                      }
+  
+                      Start-Sleep -Seconds 1
+  
+                      $timeout--
+  
+                  }
+  
+  
+                  $service = Get-Service `
+                      -Name $serviceName
+  
+  
+                  if ($service.Status -ne "Stopped") {
+  
+                      throw "Eureka-Service could not be stopped."
+  
+                  }
+  
+                  Write-Host "Eureka-Service stopped."
+  
+              }
+  
+          }
+          else {
+  
+              Write-Host ""
+              Write-Host "Eureka-Service is not installed."
+  
+          }
+  
+  
+          # ========================================================
+          # Backup existing JAR
+          # ========================================================
+  
+          if (Test-Path -LiteralPath $jar -PathType Leaf) {
+  
+              $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+  
+              $backup = Join-Path `
+                  $base `
+                  "eureka-service-$timestamp.jar"
+  
+  
+              Write-Host ""
+              Write-Host "Backing up existing JAR..."
+  
+              Copy-Item `
+                  -LiteralPath $jar `
+                  -Destination $backup `
+                  -Force
+  
+  
+              Write-Host "Backup created:"
+              Write-Host $backup
+  
+          }
+          else {
+  
+              Write-Host ""
+              Write-Host "No existing JAR."
+              Write-Host "This is the first deployment."
+  
+          }
+  
+  
+          # ========================================================
+          # Upload new JAR
+          # ========================================================
+  
+          Write-Host ""
+          Write-Host "Installing new JAR..."
+  
+          Copy-Item `
+              -LiteralPath (Join-Path $temp "app.jar") `
+              -Destination $jar `
+              -Force
+  
+  
+          if (!(Test-Path -LiteralPath $jar -PathType Leaf)) {
+  
+              throw "New JAR was not copied successfully."
+  
+          }
+  
+  
+          Write-Host "New JAR installed."
+  
+  
+          # ========================================================
+          # Install service if missing
+          # ========================================================
+  
+          $service = Get-Service `
+              -Name $serviceName `
+              -ErrorAction SilentlyContinue
+  
+  
+          if (!$service) {
+  
+              Write-Host ""
+              Write-Host "Installing Eureka-Service..."
+  
+              Push-Location $base
+  
+              try {
+  
+                  & $wrapper install
+  
+                  if ($LASTEXITCODE -ne 0) {
+  
+                      throw "WinSW service installation failed."
+  
+                  }
+  
+              }
+              finally {
+  
+                  Pop-Location
+  
+              }
+  
+  
+              Write-Host "Eureka-Service installed."
+  
+          }
+          else {
+  
+              Write-Host ""
+              Write-Host "Eureka-Service already installed."
+              Write-Host "Skipping installation."
+  
+          }
+  
+  
+          # ========================================================
+          # Start service
+          # ========================================================
+  
+          $service = Get-Service `
+              -Name $serviceName
+  
+  
+          if ($service.Status -ne "Running") {
+  
+              Write-Host ""
+              Write-Host "Starting Eureka-Service..."
+  
+              Start-Service `
+                  -Name $serviceName
+  
+  
+              $timeout = 30
+  
+              while ($timeout -gt 0) {
+  
+                  $service = Get-Service `
+                      -Name $serviceName
+  
+                  if ($service.Status -eq "Running") {
+  
+                      break
+  
+                  }
+  
+                  Start-Sleep -Seconds 1
+  
+                  $timeout--
+  
+              }
+  
+          }
+  
+  
+          # ========================================================
+          # Final service verification
+          # ========================================================
+  
+          $service = Get-Service `
+              -Name $serviceName
+  
+  
+          Write-Host ""
+          Write-Host "============================================"
+          Write-Host "Service Status"
+          Write-Host "============================================"
+  
+          Write-Host $service.Status
+  
+  
+          if ($service.Status -ne "Running") {
+  
+              throw "Eureka-Service is not running."
+  
+          }
+  
+  
+          # ========================================================
+          # Final files
+          # ========================================================
+  
+          Write-Host ""
+          Write-Host "============================================"
+          Write-Host "Deployment Files"
+          Write-Host "============================================"
+  
+          Get-ChildItem `
+              -LiteralPath $base |
+              Select-Object Name, Length, LastWriteTime
+  
+  
+          # ========================================================
+          # Verify Java process
+          # ========================================================
+  
+          Write-Host ""
+          Write-Host "============================================"
+          Write-Host "Eureka Java Process"
+          Write-Host "============================================"
+  
+          $java = Get-CimInstance Win32_Process |
+              Where-Object {
+                  $_.Name -eq "java.exe" -and
+                  $_.CommandLine -like "*eureka-service.jar*"
+              }
+  
+  
+          if ($java) {
+  
+              $java |
+                  Select-Object ProcessId, CommandLine |
+                  Format-List
+  
+          }
+          else {
+  
+              Write-Warning "Eureka Java process was not found."
+  
+          }
+  
+  
+          # ========================================================
+          # Cleanup temporary deployment files
+          # ========================================================
+  
+          Write-Host ""
+          Write-Host "Cleaning temporary deployment files..."
+  
+          Remove-Item `
+              -LiteralPath $temp `
+              -Recurse `
+              -Force
+  
+  
+          Write-Host ""
+          Write-Host "============================================"
+          Write-Host "Deployment completed successfully."
+          Write-Host "============================================"
+  
+          POWERSHELL
+  
+
+      # ============================================================
+      # Upload Windows deployment script
+      # ============================================================
+      - name: Upload Windows Deployment Script
+        shell: bash
+        run: |
+          scp \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            deployment/deploy-eureka.ps1 \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/travana-deploy-temp/deploy-eureka.ps1"
+  
+
+      # ============================================================
+      # Execute Windows Deployment Script
+      # ============================================================
+      - name: Deploy Eureka Service
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\travana-deploy-temp\deploy-eureka.ps1"
 
 
 
