@@ -149,387 +149,387 @@ jobs:
           
 
 
-deploy-alfuttaim:
-  if: github.ref == 'refs/heads/alfuttaim'
-  runs-on: ubuntu-latest
+  deploy-alfuttaim:
+    if: github.ref == 'refs/heads/alfuttaim'
+    runs-on: ubuntu-latest
 
-  env:
-    APP_NAME: eureka-service
-    DEPLOY_DIR: 'C:\${{ secrets.WIN_LOCATION }}\eureka_service'
+    env:
+      APP_NAME: eureka-service
+      DEPLOY_DIR: 'C:\${{ secrets.WIN_LOCATION }}\eureka_service'
 
-  steps:
+    steps:
 
-    # ============================================================
-    # Checkout
-    # ============================================================
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-
-
-    # ============================================================
-    # Setup Java
-    # ============================================================
-    - name: Setup JDK 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: '17'
-        cache: maven
+      # ============================================================
+      # Checkout
+      # ============================================================
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
 
-    # ============================================================
-    # Build Application
-    # ============================================================
-    - name: Build Application
-      run: mvn clean package -DskipTests
+      # ============================================================
+      # Setup Java
+      # ============================================================
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
 
 
-    # ============================================================
-    # Locate Executable JAR
-    # ============================================================
-    - name: Locate JAR
-      shell: bash
-      run: |
-        JAR=$(find . -type f -path "*/target/*.jar" \
-          ! -name "*sources.jar" \
-          ! -name "*javadoc.jar" \
-          | head -n 1)
-
-        if [ -z "$JAR" ]; then
-          echo "No executable JAR found."
-          exit 1
-        fi
-
-        echo "Using JAR: $JAR"
-
-        cp "$JAR" app.jar
-
-        echo "Application JAR prepared:"
-        ls -lh app.jar
+      # ============================================================
+      # Build Application
+      # ============================================================
+      - name: Build Application
+        run: mvn clean package -DskipTests
 
 
-    # ============================================================
-    # Configure SSH
-    # ============================================================
-    - name: Configure SSH
-      shell: bash
-      run: |
-        mkdir -p ~/.ssh
+      # ============================================================
+      # Locate Executable JAR
+      # ============================================================
+      - name: Locate JAR
+        shell: bash
+        run: |
+          JAR=$(find . -type f -path "*/target/*.jar" \
+            ! -name "*sources.jar" \
+            ! -name "*javadoc.jar" \
+            | head -n 1)
+  
+          if [ -z "$JAR" ]; then
+            echo "No executable JAR found."
+            exit 1
+          fi
+  
+          echo "Using JAR: $JAR"
+  
+          cp "$JAR" app.jar
+  
+          echo "Application JAR prepared:"
+          ls -lh app.jar
+  
 
-        echo "${{ secrets.WINDOW_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+      # ============================================================
+      # Configure SSH
+      # ============================================================
+      - name: Configure SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+  
+          echo "${{ secrets.WINDOW_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+  
+          chmod 600 ~/.ssh/id_rsa
+  
+          ssh-keyscan -H \
+            "${{ secrets.WINDOW_SERVER_HOST }}" \
+            >> ~/.ssh/known_hosts
+  
+          echo "SSH configuration completed."
+  
 
-        chmod 600 ~/.ssh/id_rsa
+      # ============================================================
+      # Test SSH
+      # ============================================================
+      - name: Test SSH Authentication
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "whoami"
+  
 
-        ssh-keyscan -H \
-          "${{ secrets.WINDOW_SERVER_HOST }}" \
-          >> ~/.ssh/known_hosts
+      # ============================================================
+      # Ensure Deployment Directory Exists
+      # ============================================================
+      - name: Ensure Deployment Directory Exists
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; Write-Host ('Deployment directory: ' + \$base); if (!(Test-Path -LiteralPath \$base -PathType Container)) { Write-Host 'Directory does not exist. Creating it...'; New-Item -ItemType Directory -Path \$base | Out-Null } else { Write-Host 'Deployment directory already exists. Nothing to create.' }; if (!(Test-Path -LiteralPath \$base -PathType Container)) { throw 'Deployment directory could not be created.' }; Write-Host 'Deployment directory verified.'\""
+  
 
-        echo "SSH configuration completed."
+      # ============================================================
+      # Verify WinSW Wrapper Exists in Repository
+      # ============================================================
+      - name: Verify WinSW Wrapper
+        shell: bash
+        run: |
+          if [ ! -f "deployment/eureka-service.exe" ]; then
+            echo "ERROR: deployment/eureka-service.exe was not found."
+            exit 1
+          fi
+  
+          echo "WinSW wrapper found."
+  
+          ls -lh deployment/eureka-service.exe
+  
 
+      # ============================================================
+      # Create WinSW XML Locally
+      #
+      # This file is created on the GitHub runner.
+      # It is NOT created directly on Windows.
+      # ============================================================
+      - name: Create WinSW Configuration
+        shell: bash
+        run: |
+          cat > deployment/eureka-service.xml <<EOF
+          <service>
+              <id>Eureka-Service</id>
+              <name>Eureka-Service</name>
+              <description>Travana Eureka Service</description>
+  
+              <executable>java</executable>
+  
+              <arguments>-jar "C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.jar"</arguments>
+  
+              <workingdirectory>C:\${{ secrets.WIN_LOCATION }}\eureka_service</workingdirectory>
+  
+              <logpath>C:\${{ secrets.WIN_LOCATION }}\eureka_service\logs</logpath>
+              <log mode="roll"/>
+  
+              <onfailure action="restart" delay="10 sec"/>
+              <onfailure action="restart" delay="30 sec"/>
+              <onfailure action="restart" delay="60 sec"/>
+  
+              <startmode>Automatic</startmode>
+          </service>
+          EOF
+  
+          echo "WinSW configuration generated."
+  
+          cat deployment/eureka-service.xml
+  
 
-    # ============================================================
-    # Test SSH
-    # ============================================================
-    - name: Test SSH Authentication
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o BatchMode=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "whoami"
+      # ============================================================
+      # Ensure WinSW Wrapper Exists on Windows
+      # ============================================================
+      - name: Ensure WinSW Wrapper Exists
+        shell: bash
+        run: |
+  
+          WRAPPER_EXISTS=$(ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"if (Test-Path -LiteralPath 'C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.exe' -PathType Leaf) { Write-Output 'true' } else { Write-Output 'false' }\"" \
+            | tr -d '\r')
+  
+          echo "WinSW wrapper exists: $WRAPPER_EXISTS"
+  
+          if [ "$WRAPPER_EXISTS" = "true" ]; then
+  
+            echo "WinSW wrapper already exists."
+            echo "Skipping upload."
+  
+          else
+  
+            echo "WinSW wrapper does not exist."
+            echo "Uploading WinSW wrapper..."
+  
+            scp \
+              -i ~/.ssh/id_rsa \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=no \
+              deployment/eureka-service.exe \
+              "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{ secrets.WIN_LOCATION }}/eureka_service/eureka-service.exe"
+  
+            echo "WinSW wrapper uploaded."
+  
+          fi
+  
 
+      # ============================================================
+      # Ensure WinSW Configuration Exists on Windows
+      # ============================================================
+      - name: Ensure WinSW Configuration Exists
+        shell: bash
+        run: |
+  
+          CONFIG_EXISTS=$(ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"if (Test-Path -LiteralPath 'C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.xml' -PathType Leaf) { Write-Output 'true' } else { Write-Output 'false' }\"" \
+            | tr -d '\r')
+  
+          echo "WinSW configuration exists: $CONFIG_EXISTS"
+  
+          if [ "$CONFIG_EXISTS" = "true" ]; then
+  
+            echo "WinSW configuration already exists."
+            echo "Skipping upload."
+  
+          else
+  
+            echo "WinSW configuration does not exist."
+            echo "Uploading WinSW configuration..."
+  
+            scp \
+              -i ~/.ssh/id_rsa \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=no \
+              deployment/eureka-service.xml \
+              "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{ secrets.WIN_LOCATION }}/eureka_service/eureka-service.xml"
+  
+            echo "WinSW configuration uploaded."
+  
+          fi
+  
 
-    # ============================================================
-    # Ensure Deployment Directory Exists
-    # ============================================================
-    - name: Ensure Deployment Directory Exists
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; Write-Host ('Deployment directory: ' + \$base); if (!(Test-Path -LiteralPath \$base -PathType Container)) { Write-Host 'Directory does not exist. Creating it...'; New-Item -ItemType Directory -Path \$base | Out-Null } else { Write-Host 'Deployment directory already exists. Nothing to create.' }; if (!(Test-Path -LiteralPath \$base -PathType Container)) { throw 'Deployment directory could not be created.' }; Write-Host 'Deployment directory verified.'\""
+      # ============================================================
+      # Ensure Logs Directory Exists
+      # ============================================================
+      - name: Ensure Logs Directory Exists
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$logs='C:\${{ secrets.WIN_LOCATION }}\eureka_service\logs'; if (!(Test-Path -LiteralPath \$logs -PathType Container)) { Write-Host ('Creating logs directory: ' + \$logs); New-Item -ItemType Directory -Path \$logs | Out-Null } else { Write-Host 'Logs directory already exists. Nothing to create.' }; if (!(Test-Path -LiteralPath \$logs -PathType Container)) { throw 'Logs directory could not be created.' }; Write-Host 'Logs directory verified.'\""
+  
 
+      # ============================================================
+      # Verify Required WinSW Files
+      # ============================================================
+      - name: Verify WinSW Files
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; Write-Host 'WinSW files:'; Get-ChildItem -LiteralPath \$base -Filter 'eureka-service.*' | Select-Object Name,Length,LastWriteTime; if (!(Test-Path -LiteralPath '\$base\eureka-service.exe')) { throw 'WinSW executable missing.' }; if (!(Test-Path -LiteralPath '\$base\eureka-service.xml')) { throw 'WinSW XML missing.' }\""
+  
 
-    # ============================================================
-    # Verify WinSW Wrapper Exists in Repository
-    # ============================================================
-    - name: Verify WinSW Wrapper
-      shell: bash
-      run: |
-        if [ ! -f "deployment/eureka-service.exe" ]; then
-          echo "ERROR: deployment/eureka-service.exe was not found."
-          exit 1
-        fi
+      # ============================================================
+      # Stop Existing Eureka Service
+      # ============================================================
+      - name: Stop Eureka Service
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$service=Get-Service -Name 'Eureka-Service' -ErrorAction SilentlyContinue; if (\$service) { Write-Host ('Current service status: ' + \$service.Status); if (\$service.Status -eq 'Running') { Write-Host 'Stopping Eureka-Service...'; Stop-Service -Name 'Eureka-Service' -Force; try { \$service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30)) } catch { Start-Sleep -Seconds 3 }; Write-Host 'Eureka-Service stopped.' } else { Write-Host 'Eureka-Service is already stopped.' } } else { Write-Host 'Eureka-Service is not installed. First deployment.' }\""
+  
 
-        echo "WinSW wrapper found."
+      # ============================================================
+      # Wait for Eureka Java Process to Stop
+      # ============================================================
+      - name: Wait for Eureka Java Process
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$timeout=30; do { \$java=Get-CimInstance Win32_Process | Where-Object { \$_.Name -eq 'java.exe' -and \$_.CommandLine -like '*eureka-service.jar*' }; if (-not \$java) { break }; Write-Host ('Waiting for Java PID(s): ' + (\$java.ProcessId -join ', ')); Start-Sleep -Seconds 1; \$timeout-- } while (\$timeout -gt 0); \$java=Get-CimInstance Win32_Process | Where-Object { \$_.Name -eq 'java.exe' -and \$_.CommandLine -like '*eureka-service.jar*' }; if (\$java) { throw ('Java process still running. PID(s): ' + (\$java.ProcessId -join ', ')) }; Write-Host 'Eureka Java process has stopped.'\""
+  
 
-        ls -lh deployment/eureka-service.exe
+      # ============================================================
+      # Backup Existing JAR
+      # ============================================================
+      - name: Backup Existing JAR
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; \$jar=Join-Path \$base 'eureka-service.jar'; if (Test-Path -LiteralPath \$jar -PathType Leaf) { \$timestamp=Get-Date -Format 'yyyyMMdd-HHmmss'; \$backup=Join-Path \$base ('eureka-service-' + \$timestamp + '.jar'); Copy-Item -LiteralPath \$jar -Destination \$backup; Write-Host ('Backup created: ' + \$backup) } else { Write-Host 'No existing JAR. First deployment.' }\""
+  
 
-
-    # ============================================================
-    # Create WinSW XML Locally
-    #
-    # This file is created on the GitHub runner.
-    # It is NOT created directly on Windows.
-    # ============================================================
-    - name: Create WinSW Configuration
-      shell: bash
-      run: |
-        cat > deployment/eureka-service.xml <<EOF
-        <service>
-            <id>Eureka-Service</id>
-            <name>Eureka-Service</name>
-            <description>Travana Eureka Service</description>
-
-            <executable>java</executable>
-
-            <arguments>-jar "C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.jar"</arguments>
-
-            <workingdirectory>C:\${{ secrets.WIN_LOCATION }}\eureka_service</workingdirectory>
-
-            <logpath>C:\${{ secrets.WIN_LOCATION }}\eureka_service\logs</logpath>
-            <log mode="roll"/>
-
-            <onfailure action="restart" delay="10 sec"/>
-            <onfailure action="restart" delay="30 sec"/>
-            <onfailure action="restart" delay="60 sec"/>
-
-            <startmode>Automatic</startmode>
-        </service>
-        EOF
-
-        echo "WinSW configuration generated."
-
-        cat deployment/eureka-service.xml
-
-
-    # ============================================================
-    # Ensure WinSW Wrapper Exists on Windows
-    # ============================================================
-    - name: Ensure WinSW Wrapper Exists
-      shell: bash
-      run: |
-
-        WRAPPER_EXISTS=$(ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"if (Test-Path -LiteralPath 'C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.exe' -PathType Leaf) { Write-Output 'true' } else { Write-Output 'false' }\"" \
-          | tr -d '\r')
-
-        echo "WinSW wrapper exists: $WRAPPER_EXISTS"
-
-        if [ "$WRAPPER_EXISTS" = "true" ]; then
-
-          echo "WinSW wrapper already exists."
-          echo "Skipping upload."
-
-        else
-
-          echo "WinSW wrapper does not exist."
-          echo "Uploading WinSW wrapper..."
-
+      # ============================================================
+      # Upload New JAR
+      #
+      # This is intentionally done EVERY deployment.
+      # ============================================================
+      - name: Upload New JAR
+        shell: bash
+        run: |
           scp \
             -i ~/.ssh/id_rsa \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=no \
-            deployment/eureka-service.exe \
-            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{ secrets.WIN_LOCATION }}/eureka_service/eureka-service.exe"
+            app.jar \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{ secrets.WIN_LOCATION }}/eureka_service/eureka-service.jar"
+  
+          echo "New JAR uploaded."
+  
 
-          echo "WinSW wrapper uploaded."
-
-        fi
-
-
-    # ============================================================
-    # Ensure WinSW Configuration Exists on Windows
-    # ============================================================
-    - name: Ensure WinSW Configuration Exists
-      shell: bash
-      run: |
-
-        CONFIG_EXISTS=$(ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"if (Test-Path -LiteralPath 'C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.xml' -PathType Leaf) { Write-Output 'true' } else { Write-Output 'false' }\"" \
-          | tr -d '\r')
-
-        echo "WinSW configuration exists: $CONFIG_EXISTS"
-
-        if [ "$CONFIG_EXISTS" = "true" ]; then
-
-          echo "WinSW configuration already exists."
-          echo "Skipping upload."
-
-        else
-
-          echo "WinSW configuration does not exist."
-          echo "Uploading WinSW configuration..."
-
-          scp \
+      # ============================================================
+      # Verify Deployment Files
+      # ============================================================
+      - name: Verify Deployment Files
+        shell: bash
+        run: |
+          ssh \
             -i ~/.ssh/id_rsa \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=no \
-            deployment/eureka-service.xml \
-            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{ secrets.WIN_LOCATION }}/eureka_service/eureka-service.xml"
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; Write-Host '================================'; Write-Host 'Deployment directory'; Write-Host '================================'; Get-ChildItem -LiteralPath \$base; Write-Host ''; Write-Host 'Required files:'; if (!(Test-Path -LiteralPath (Join-Path \$base 'eureka-service.exe'))) { throw 'eureka-service.exe missing.' }; if (!(Test-Path -LiteralPath (Join-Path \$base 'eureka-service.xml'))) { throw 'eureka-service.xml missing.' }; if (!(Test-Path -LiteralPath (Join-Path \$base 'eureka-service.jar'))) { throw 'eureka-service.jar missing.' }; Write-Host 'All required deployment files exist.'\""
+  
 
-          echo "WinSW configuration uploaded."
+      # ============================================================
+      # Install Eureka Service ONLY if it does not exist
+      # ============================================================
+      - name: Install Eureka Service If Needed
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; \$wrapper=Join-Path \$base 'eureka-service.exe'; \$config=Join-Path \$base 'eureka-service.xml'; \$jar=Join-Path \$base 'eureka-service.jar'; if (!(Test-Path -LiteralPath \$wrapper)) { throw ('WinSW wrapper missing: ' + \$wrapper) }; if (!(Test-Path -LiteralPath \$config)) { throw ('WinSW configuration missing: ' + \$config) }; if (!(Test-Path -LiteralPath \$jar)) { throw ('JAR missing: ' + \$jar) }; \$service=Get-Service -Name 'Eureka-Service' -ErrorAction SilentlyContinue; if (-not \$service) { Write-Host 'Eureka-Service does not exist. Installing...'; Push-Location \$base; try { & '.\eureka-service.exe' install; if (\$LASTEXITCODE -ne 0) { throw 'WinSW service installation failed.' } } finally { Pop-Location }; Write-Host 'Eureka-Service installed.' } else { Write-Host 'Eureka-Service already exists. Skipping installation.' }\""
+  
 
-        fi
+      # ============================================================
+      # Start Eureka Service
+      # ============================================================
+      - name: Start Eureka Service
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$service=Get-Service -Name 'Eureka-Service' -ErrorAction Stop; if (\$service.Status -ne 'Running') { Write-Host 'Starting Eureka-Service...'; Start-Service -Name 'Eureka-Service'; \$service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30)) } else { Write-Host 'Eureka-Service is already running.' }; \$service=Get-Service -Name 'Eureka-Service'; Write-Host ('Eureka-Service status: ' + \$service.Status); if (\$service.Status -ne 'Running') { throw 'Eureka-Service failed to start.' }\""
+  
 
-
-    # ============================================================
-    # Ensure Logs Directory Exists
-    # ============================================================
-    - name: Ensure Logs Directory Exists
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$logs='C:\${{ secrets.WIN_LOCATION }}\eureka_service\logs'; if (!(Test-Path -LiteralPath \$logs -PathType Container)) { Write-Host ('Creating logs directory: ' + \$logs); New-Item -ItemType Directory -Path \$logs | Out-Null } else { Write-Host 'Logs directory already exists. Nothing to create.' }; if (!(Test-Path -LiteralPath \$logs -PathType Container)) { throw 'Logs directory could not be created.' }; Write-Host 'Logs directory verified.'\""
-
-
-    # ============================================================
-    # Verify Required WinSW Files
-    # ============================================================
-    - name: Verify WinSW Files
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; Write-Host 'WinSW files:'; Get-ChildItem -LiteralPath \$base -Filter 'eureka-service.*' | Select-Object Name,Length,LastWriteTime; if (!(Test-Path -LiteralPath '\$base\eureka-service.exe')) { throw 'WinSW executable missing.' }; if (!(Test-Path -LiteralPath '\$base\eureka-service.xml')) { throw 'WinSW XML missing.' }\""
-
-
-    # ============================================================
-    # Stop Existing Eureka Service
-    # ============================================================
-    - name: Stop Eureka Service
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$service=Get-Service -Name 'Eureka-Service' -ErrorAction SilentlyContinue; if (\$service) { Write-Host ('Current service status: ' + \$service.Status); if (\$service.Status -eq 'Running') { Write-Host 'Stopping Eureka-Service...'; Stop-Service -Name 'Eureka-Service' -Force; try { \$service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30)) } catch { Start-Sleep -Seconds 3 }; Write-Host 'Eureka-Service stopped.' } else { Write-Host 'Eureka-Service is already stopped.' } } else { Write-Host 'Eureka-Service is not installed. First deployment.' }\""
-
-
-    # ============================================================
-    # Wait for Eureka Java Process to Stop
-    # ============================================================
-    - name: Wait for Eureka Java Process
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$timeout=30; do { \$java=Get-CimInstance Win32_Process | Where-Object { \$_.Name -eq 'java.exe' -and \$_.CommandLine -like '*eureka-service.jar*' }; if (-not \$java) { break }; Write-Host ('Waiting for Java PID(s): ' + (\$java.ProcessId -join ', ')); Start-Sleep -Seconds 1; \$timeout-- } while (\$timeout -gt 0); \$java=Get-CimInstance Win32_Process | Where-Object { \$_.Name -eq 'java.exe' -and \$_.CommandLine -like '*eureka-service.jar*' }; if (\$java) { throw ('Java process still running. PID(s): ' + (\$java.ProcessId -join ', ')) }; Write-Host 'Eureka Java process has stopped.'\""
-
-
-    # ============================================================
-    # Backup Existing JAR
-    # ============================================================
-    - name: Backup Existing JAR
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; \$jar=Join-Path \$base 'eureka-service.jar'; if (Test-Path -LiteralPath \$jar -PathType Leaf) { \$timestamp=Get-Date -Format 'yyyyMMdd-HHmmss'; \$backup=Join-Path \$base ('eureka-service-' + \$timestamp + '.jar'); Copy-Item -LiteralPath \$jar -Destination \$backup; Write-Host ('Backup created: ' + \$backup) } else { Write-Host 'No existing JAR. First deployment.' }\""
-
-
-    # ============================================================
-    # Upload New JAR
-    #
-    # This is intentionally done EVERY deployment.
-    # ============================================================
-    - name: Upload New JAR
-      shell: bash
-      run: |
-        scp \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          app.jar \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{ secrets.WIN_LOCATION }}/eureka_service/eureka-service.jar"
-
-        echo "New JAR uploaded."
-
-
-    # ============================================================
-    # Verify Deployment Files
-    # ============================================================
-    - name: Verify Deployment Files
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; Write-Host '================================'; Write-Host 'Deployment directory'; Write-Host '================================'; Get-ChildItem -LiteralPath \$base; Write-Host ''; Write-Host 'Required files:'; if (!(Test-Path -LiteralPath (Join-Path \$base 'eureka-service.exe'))) { throw 'eureka-service.exe missing.' }; if (!(Test-Path -LiteralPath (Join-Path \$base 'eureka-service.xml'))) { throw 'eureka-service.xml missing.' }; if (!(Test-Path -LiteralPath (Join-Path \$base 'eureka-service.jar'))) { throw 'eureka-service.jar missing.' }; Write-Host 'All required deployment files exist.'\""
-
-
-    # ============================================================
-    # Install Eureka Service ONLY if it does not exist
-    # ============================================================
-    - name: Install Eureka Service If Needed
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; \$wrapper=Join-Path \$base 'eureka-service.exe'; \$config=Join-Path \$base 'eureka-service.xml'; \$jar=Join-Path \$base 'eureka-service.jar'; if (!(Test-Path -LiteralPath \$wrapper)) { throw ('WinSW wrapper missing: ' + \$wrapper) }; if (!(Test-Path -LiteralPath \$config)) { throw ('WinSW configuration missing: ' + \$config) }; if (!(Test-Path -LiteralPath \$jar)) { throw ('JAR missing: ' + \$jar) }; \$service=Get-Service -Name 'Eureka-Service' -ErrorAction SilentlyContinue; if (-not \$service) { Write-Host 'Eureka-Service does not exist. Installing...'; Push-Location \$base; try { & '.\eureka-service.exe' install; if (\$LASTEXITCODE -ne 0) { throw 'WinSW service installation failed.' } } finally { Pop-Location }; Write-Host 'Eureka-Service installed.' } else { Write-Host 'Eureka-Service already exists. Skipping installation.' }\""
-
-
-    # ============================================================
-    # Start Eureka Service
-    # ============================================================
-    - name: Start Eureka Service
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$service=Get-Service -Name 'Eureka-Service' -ErrorAction Stop; if (\$service.Status -ne 'Running') { Write-Host 'Starting Eureka-Service...'; Start-Service -Name 'Eureka-Service'; \$service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30)) } else { Write-Host 'Eureka-Service is already running.' }; \$service=Get-Service -Name 'Eureka-Service'; Write-Host ('Eureka-Service status: ' + \$service.Status); if (\$service.Status -ne 'Running') { throw 'Eureka-Service failed to start.' }\""
-
-
-    # ============================================================
-    # Final Verification
-    # ============================================================
-    - name: Verify Eureka Deployment
-      shell: bash
-      run: |
-        ssh \
-          -i ~/.ssh/id_rsa \
-          -o IdentitiesOnly=yes \
-          -o StrictHostKeyChecking=no \
-          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-          "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; Write-Host '========================================'; Write-Host 'EUREKA SERVICE STATUS'; Write-Host '========================================'; Get-Service -Name 'Eureka-Service' | Format-Table Status,Name,DisplayName; Write-Host ''; Write-Host '========================================'; Write-Host 'DEPLOYMENT FILES'; Write-Host '========================================'; Get-ChildItem -LiteralPath \$base | Select-Object Mode,Length,LastWriteTime,Name; Write-Host ''; Write-Host '========================================'; Write-Host 'EUREKA JAVA PROCESS'; Write-Host '========================================'; \$java=Get-CimInstance Win32_Process | Where-Object { \$_.Name -eq 'java.exe' -and \$_.CommandLine -like '*eureka-service.jar*' }; if (\$java) { \$java | Select-Object ProcessId,CommandLine | Format-List } else { Write-Host 'No Eureka Java process found.'; throw 'Eureka Java process is not running.' }; Write-Host ''; Write-Host 'Deployment completed successfully.'\""
-
+      # ============================================================
+      # Final Verification
+      # ============================================================
+      - name: Verify Eureka Deployment
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; Write-Host '========================================'; Write-Host 'EUREKA SERVICE STATUS'; Write-Host '========================================'; Get-Service -Name 'Eureka-Service' | Format-Table Status,Name,DisplayName; Write-Host ''; Write-Host '========================================'; Write-Host 'DEPLOYMENT FILES'; Write-Host '========================================'; Get-ChildItem -LiteralPath \$base | Select-Object Mode,Length,LastWriteTime,Name; Write-Host ''; Write-Host '========================================'; Write-Host 'EUREKA JAVA PROCESS'; Write-Host '========================================'; \$java=Get-CimInstance Win32_Process | Where-Object { \$_.Name -eq 'java.exe' -and \$_.CommandLine -like '*eureka-service.jar*' }; if (\$java) { \$java | Select-Object ProcessId,CommandLine | Format-List } else { Write-Host 'No Eureka Java process found.'; throw 'Eureka Java process is not running.' }; Write-Host ''; Write-Host 'Deployment completed successfully.'\""
+  
 
 
 
