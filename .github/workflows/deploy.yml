@@ -245,17 +245,22 @@ jobs:
       # ============================================================
       # Ensure Deployment Directory Exists
       # ============================================================
+      # ============================================================
+      # Ensure Deployment Directory Exists
+      # ============================================================
       - name: Ensure Deployment Directory Exists
         shell: bash
         run: |
+          DEPLOY_PATH="C:\${{ secrets.WIN_LOCATION }}\eureka_service"
+
+          echo "Checking deployment directory: $DEPLOY_PATH"
+
           ssh \
             -i ~/.ssh/id_rsa \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=no \
             "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-            "powershell -NoProfile -NonInteractive -Command \"\$base='C:\${{ secrets.WIN_LOCATION }}\eureka_service'; Write-Host ('Deployment directory: ' + \$base); if (!(Test-Path -LiteralPath \$base -PathType Container)) { Write-Host 'Directory does not exist. Creating it...'; New-Item -ItemType Directory -Path \$base | Out-Null } else { Write-Host 'Deployment directory already exists. Nothing to create.' }; if (!(Test-Path -LiteralPath \$base -PathType Container)) { throw 'Deployment directory could not be created.' }; Write-Host 'Deployment directory verified.'\""
-  
-
+            "powershell -NoProfile -NonInteractive -Command \"if (!(Test-Path -LiteralPath '$DEPLOY_PATH' -PathType Container)) { New-Item -ItemType Directory -Path '$DEPLOY_PATH' | Out-Null; Write-Host 'Deployment directory created.' } else { Write-Host 'Deployment directory already exists. Nothing to create.' }; if (!(Test-Path -LiteralPath '$DEPLOY_PATH' -PathType Container)) { throw 'Deployment directory does not exist.' } else { Write-Host 'Deployment directory verified.' }\""
       # ============================================================
       # Verify WinSW Wrapper Exists in Repository
       # ============================================================
