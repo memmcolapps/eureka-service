@@ -235,6 +235,131 @@ jobs:
             \""
 
       #######################################################
+      # Verify WinSW wrapper
+      #######################################################
+      - name: Verify WinSW wrapper
+        shell: bash
+        run: |
+          if [ ! -f "deployment/eureka-service.exe" ]; then
+            echo "WinSW wrapper not found."
+            exit 1
+          fi
+      
+          echo "WinSW wrapper found."
+
+      #######################################################
+      # Upload WinSW wrapper
+      #######################################################
+      - name: Upload WinSW wrapper
+        run: |
+          scp -v -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            deployment/eureka-service.exe \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{ secrets.WIN_LOCATION }}/eureka_service/eureka-service.exe"
+
+      #######################################################
+      # Configure Eureka Windows Service
+      #######################################################
+      - name: Configure Eureka Windows Service
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+      
+            $ErrorActionPreference = 'Stop'
+      
+            $base = "C:\${{ secrets.WIN_LOCATION }}\eureka_service"
+      
+            $xml = @"
+            <service>
+                <id>Eureka-Service</id>
+                <name>Eureka-Service</name>
+                <description>Eureka Service</description>
+                
+                <executable>java</executable>
+                
+                <arguments>-jar "$base\eureka-service.jar"</arguments>
+                
+                <workingdirectory>$base</workingdirectory>
+                
+                <logpath>$base\logs</logpath>
+                <log mode="roll"/>
+                
+                <onfailure action="restart" delay="10 sec"/>
+                <onfailure action="restart" delay="30 sec"/>
+                <onfailure action="restart" delay="60 sec"/>
+                
+                <startmode>Automatic</startmode>
+            </service>
+            "@
+      
+            New-Item -ItemType Directory -Force "$base\logs" | Out-Null
+        
+            Set-Content `
+            -Path "$base\eureka-service.xml" `
+            -Value $xml `
+            -Encoding UTF8
+            
+            Write-Host "WinSW configuration created."
+            
+            Get-Content "$base\eureka-service.xml"
+        
+          EOF
+
+      #######################################################
+      # Install or update Eureka Service
+      #######################################################
+      - name: Install or update Eureka Service
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+      
+            $ErrorActionPreference = 'Stop'
+      
+            $base = "C:\${{ secrets.WIN_LOCATION }}\eureka_service"
+            $wrapper = "$base\eureka-service.exe"
+      
+            if (!(Test-Path $wrapper)) {
+                throw "WinSW wrapper not found: $wrapper"
+            }
+      
+            Write-Host "Checking Eureka-Service..."
+      
+            $service = Get-Service -Name "Eureka-Service" -ErrorAction SilentlyContinue
+      
+            if (-not $service) {
+      
+                Write-Host "Eureka-Service does not exist."
+                Write-Host "Installing service..."
+      
+                Push-Location $base
+      
+                & $wrapper install
+      
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Failed to install Eureka-Service."
+                }
+      
+                Pop-Location
+      
+                Write-Host "Eureka-Service installed."
+            }
+            else {
+                Write-Host "Eureka-Service already exists."
+            }
+      
+            EOF
+
+      #######################################################
       # Stop service and backup current JAR
       #######################################################
       - name: Stop Service and Backup JAR
@@ -245,88 +370,112 @@ jobs:
             -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             "powershell -NoProfile -NonInteractive -" <<'EOF'
-            $ErrorActionPreference='Stop'
-  
-            $jar = "C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.jar"
-                 
-  
+
+            $ErrorActionPreference = 'Stop'
+
+            $base = "C:\${{ secrets.WIN_LOCATION }}\eureka_service"
+            $jar = "$base\eureka-service.jar"
+
             Write-Host "========== BEFORE =========="
-            Get-ChildItem C:\${{ secrets.WIN_LOCATION }}\eureka_service
-  
-            $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
-  
-            Write-Host "Current Status: $($service.Status)"
-  
-            if ($service.Status -eq "Running") {
-              Write-Host 'Stopping service...'
-              Stop-Service -Name "Eureka-Service" -Force
-              $service.WaitForStatus("Stopped","00:00:30")
+            Get-ChildItem $base
+
+            $service = Get-Service -Name "Eureka-Service" -ErrorAction SilentlyContinue
+
+            if ($service) {
+
+                Write-Host "Current Status: $($service.Status)"
+
+                if ($service.Status -eq "Running") {
+
+                    Write-Host "Stopping Eureka-Service..."
+
+                    Stop-Service `
+                        -Name "Eureka-Service" `
+                        -Force `
+                        -ErrorAction Stop
+
+                    $service = Get-Service -Name "Eureka-Service"
+
+                    $service.WaitForStatus(
+                        "Stopped",
+                        [TimeSpan]::FromSeconds(30)
+                    )
+                }
             }
-          
-            $service = Get-Service -Name "Eureka-Service"
-          
-            Write-Host "Service Status: $($service.Status)"
-             
-            $service = Get-Service "Eureka-Service"
-            
-            Write-Host "Waiting for java.exe to exit..."
-            
+
+            Write-Host "Service stopped."
+
+            #
+            # Make sure Java has actually exited
+            #
+
+            Write-Host "Waiting for Java process to exit..."
+
             $timeout = 30
-    
+
             do {
-            
-              $java = Get-CimInstance Win32_Process |
-                Where-Object {
-                  $_.Name -eq "java.exe" -and
-                  $_.CommandLine -like "*eureka-service.jar*"
-            }
-        
-            if (-not $java) {
-              break
-            }
-          
-            Write-Host "Waiting for PID(s): $($java.ProcessId -join ', ')"
-            
-            Start-Sleep -Seconds 1
-            
-            $timeout--
-          
+
+                $java = Get-CimInstance Win32_Process |
+                    Where-Object {
+                        $_.Name -eq "java.exe" -and
+                        $_.CommandLine -like "*eureka-service.jar*"
+                    }
+
+                if (-not $java) {
+                    break
+                }
+
+                Write-Host "Waiting for PID(s): $($java.ProcessId -join ', ')"
+
+                Start-Sleep -Seconds 1
+                $timeout--
+
             } while ($timeout -gt 0)
-              
-              # Refresh one last time
-              $java = Get-CimInstance Win32_Process |
+
+            $java = Get-CimInstance Win32_Process |
                 Where-Object {
-                  $_.Name -eq "java.exe" -and
-                  $_.CommandLine -like "*eureka-service.jar*"
-            }
-            
+                    $_.Name -eq "java.exe" -and
+                    $_.CommandLine -like "*eureka-service.jar*"
+                }
+
             if ($java) {
-              throw "Java process still running. PID(s): $($java.ProcessId -join ', ')"
+                throw "Java process still running. PID(s): $($java.ProcessId -join ', ')"
             }
-  
-            Write-Host "Status after stop: $($service.Status)"
-  
-            if ($service.Status -ne "Stopped") {
-              Write-Host 'Service fail to stop...'
-              throw "Service failed to stop."
-            }
-  
-            Write-Host "Jar exists? $(Test-Path $jar)"
-            
-            Write-Host "Backing up JAR..."
-    
-            if (!(Test-Path $jar)) {
-              throw ("Jar not found: " + $jar)
-            }
-          
+
+            #
+            # Backup existing JAR
+            #
+
             if (Test-Path $jar) {
-                throw "Original JAR still exists."
+
+                $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+
+                $backup = "$base\eureka-service-$timestamp.jar"
+
+                Write-Host "Backing up:"
+                Write-Host "$jar"
+                Write-Host "to"
+                Write-Host "$backup"
+
+                Copy-Item `
+                    -Path $jar `
+                    -Destination $backup `
+                    -Force
+
+                if (!(Test-Path $backup)) {
+                    throw "JAR backup failed."
+                }
+
+                Write-Host "Backup completed."
             }
-            
+            else {
+                Write-Host "No existing JAR found. This is the first deployment."
+            }
+
             Write-Host "========== AFTER =========="
-            Get-ChildItem C:\${{ secrets.WIN_LOCATION }}\eureka_service
-            Write-Host 'Backup completed.'
-          EOF
+            Get-ChildItem $base
+
+            EOF
 
       #######################################################
       # Upload new JAR
@@ -357,7 +506,7 @@ jobs:
       #######################################################
       # Start Windows service
       #######################################################
-      - name: Start Service
+      - name: Start Eureka Service
         run: |
           ssh -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
@@ -365,41 +514,58 @@ jobs:
             -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             "powershell -NoProfile -NonInteractive -" <<'EOF'
-          
-            $ErrorActionPreference='Stop'
-          
-            if (!(Test-Path "C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.jar")) {
-                throw "Deployment JAR missing."
+
+            $ErrorActionPreference = 'Stop'
+
+            $base = "C:\${{ secrets.WIN_LOCATION }}\eureka_service"
+            $jar = "$base\eureka-service.jar"
+
+            if (!(Test-Path $jar)) {
+                throw "Deployment JAR missing: $jar"
             }
 
-            Write-Host 'Starting service...'
-            Start-Service -Name 'Eureka-Service'
-          
+            Write-Host "Starting Eureka-Service..."
+
+            Start-Service -Name "Eureka-Service"
+
+            Write-Host "Waiting for service to start..."
+
+            $service = Get-Service -Name "Eureka-Service"
+
+            $service.WaitForStatus(
+                "Running",
+                [TimeSpan]::FromSeconds(30)
+            )
+
             Start-Sleep -Seconds 5
-              
+
+            $service = Get-Service -Name "Eureka-Service"
+
+            if ($service.Status -ne "Running") {
+                throw "Eureka-Service failed to reach Running state."
+            }
+
+            Write-Host "Eureka-Service is RUNNING."
+
+            #
+            # Verify Java
+            #
+
             $java = Get-CimInstance Win32_Process |
-              Where-Object {
-              $_.Name -eq "java.exe" -and
-              $_.CommandLine -like "*eureka-service.jar*"
-            }
-              
+                Where-Object {
+                    $_.Name -eq "java.exe" -and
+                    $_.CommandLine -like "*eureka-service.jar*"
+                }
+
             if (-not $java) {
-              throw "Java process did not start."
+                throw "Eureka Java process was not found."
             }
 
-            Write-Host "Waiting for Running state..."
-            (Get-Service -Name 'Eureka-Service').WaitForStatus('Running','00:00:30')
+            Write-Host "Java PID(s): $($java.ProcessId -join ', ')"
 
-            $service = Get-Service -Name 'Eureka-Service'
+            Write-Host "Deployment completed successfully."
 
-            if ($service.Status -ne 'Running') {
-                throw 'Service failed to start.'
-            }
-
-            Write-Host 'Service is running.'
-
-            Write-Host 'Deployment completed successfully.'
-          EOF
+            EOF
 
       #######################################################
       # Verify deployment
@@ -418,3 +584,142 @@ jobs:
 
             Get-ChildItem C:\${{ secrets.WIN_LOCATION }}\eureka_service\*.jar
           "
+
+
+#      - name: Stop Service and Backup JAR
+#        run: |
+#          ssh -i ~/.ssh/id_rsa \
+#            -o StrictHostKeyChecking=no \
+#            -o ServerAliveInterval=30 \
+#            -o ServerAliveCountMax=10 \
+#            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+#            "powershell -NoProfile -NonInteractive -" <<'EOF'
+#            $ErrorActionPreference='Stop'
+#
+#            $jar = "C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.jar"
+#
+#
+#            Write-Host "========== BEFORE =========="
+#            Get-ChildItem C:\${{ secrets.WIN_LOCATION }}\eureka_service
+#
+#            $service = Get-Service -Name "Eureka-Service" -ErrorAction Stop
+#
+#            Write-Host "Current Status: $($service.Status)"
+#
+#            if ($service.Status -eq "Running") {
+#              Write-Host 'Stopping service...'
+#              Stop-Service -Name "Eureka-Service" -Force
+#              $service.WaitForStatus("Stopped","00:00:30")
+#            }
+#
+#            $service = Get-Service -Name "Eureka-Service"
+#
+#            Write-Host "Service Status: $($service.Status)"
+#
+#            $service = Get-Service "Eureka-Service"
+#
+#            Write-Host "Waiting for java.exe to exit..."
+#
+#            $timeout = 30
+#
+#            do {
+#
+#              $java = Get-CimInstance Win32_Process |
+#                Where-Object {
+#                  $_.Name -eq "java.exe" -and
+#                  $_.CommandLine -like "*eureka-service.jar*"
+#            }
+#
+#            if (-not $java) {
+#              break
+#            }
+#
+#            Write-Host "Waiting for PID(s): $($java.ProcessId -join ', ')"
+#
+#            Start-Sleep -Seconds 1
+#
+#            $timeout--
+#
+#            } while ($timeout -gt 0)
+#
+#              # Refresh one last time
+#              $java = Get-CimInstance Win32_Process |
+#                Where-Object {
+#                  $_.Name -eq "java.exe" -and
+#                  $_.CommandLine -like "*eureka-service.jar*"
+#            }
+#
+#            if ($java) {
+#              throw "Java process still running. PID(s): $($java.ProcessId -join ', ')"
+#            }
+#
+#            Write-Host "Status after stop: $($service.Status)"
+#
+#            if ($service.Status -ne "Stopped") {
+#              Write-Host 'Service fail to stop...'
+#              throw "Service failed to stop."
+#            }
+#
+#            Write-Host "Jar exists? $(Test-Path $jar)"
+#
+#            Write-Host "Backing up JAR..."
+#
+#            if (!(Test-Path $jar)) {
+#              throw ("Jar not found: " + $jar)
+#            }
+#
+#            if (Test-Path $jar) {
+#                throw "Original JAR still exists."
+#            }
+#
+#            Write-Host "========== AFTER =========="
+#            Get-ChildItem C:\${{ secrets.WIN_LOCATION }}\eureka_service
+#            Write-Host 'Backup completed.'
+#          EOF
+
+
+
+
+#      - name: Start Service
+#        run: |
+#          ssh -i ~/.ssh/id_rsa \
+#            -o StrictHostKeyChecking=no \
+#            -o ServerAliveInterval=30 \
+#            -o ServerAliveCountMax=10 \
+#            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+#            "powershell -NoProfile -NonInteractive -" <<'EOF'
+#
+#            $ErrorActionPreference='Stop'
+#
+#            if (!(Test-Path "C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.jar")) {
+#                throw "Deployment JAR missing."
+#            }
+#
+#            Write-Host 'Starting service...'
+#            Start-Service -Name 'Eureka-Service'
+#
+#            Start-Sleep -Seconds 5
+#
+#            $java = Get-CimInstance Win32_Process |
+#              Where-Object {
+#              $_.Name -eq "java.exe" -and
+#              $_.CommandLine -like "*eureka-service.jar*"
+#            }
+#
+#            if (-not $java) {
+#              throw "Java process did not start."
+#            }
+#
+#            Write-Host "Waiting for Running state..."
+#            (Get-Service -Name 'Eureka-Service').WaitForStatus('Running','00:00:30')
+#
+#            $service = Get-Service -Name 'Eureka-Service'
+#
+#            if ($service.Status -ne 'Running') {
+#                throw 'Service failed to start.'
+#            }
+#
+#            Write-Host 'Service is running.'
+#
+#            Write-Host 'Deployment completed successfully.'
+#          EOF
