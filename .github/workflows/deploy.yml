@@ -395,17 +395,22 @@ jobs:
       # ============================================================
       # Ensure Logs Directory Exists
       # ============================================================
+      # ============================================================
+      # Ensure Logs Directory Exists
+      # ============================================================
       - name: Ensure Logs Directory Exists
         shell: bash
         run: |
+          LOGS_PATH="C:\${{ secrets.WIN_LOCATION }}\eureka_service\logs"
+          
+          echo "Checking logs directory: $LOGS_PATH"
+          
           ssh \
             -i ~/.ssh/id_rsa \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=no \
             "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
-            "powershell -NoProfile -NonInteractive -Command \"\$logs='C:\${{ secrets.WIN_LOCATION }}\eureka_service\logs'; if (!(Test-Path -LiteralPath \$logs -PathType Container)) { Write-Host ('Creating logs directory: ' + \$logs); New-Item -ItemType Directory -Path \$logs | Out-Null } else { Write-Host 'Logs directory already exists. Nothing to create.' }; if (!(Test-Path -LiteralPath \$logs -PathType Container)) { throw 'Logs directory could not be created.' }; Write-Host 'Logs directory verified.'\""
-  
-
+            "powershell -NoProfile -NonInteractive -Command \"if (!(Test-Path -LiteralPath '$LOGS_PATH' -PathType Container)) { Write-Host 'Logs directory does not exist. Creating...'; New-Item -ItemType Directory -Path '$LOGS_PATH' | Out-Null } else { Write-Host 'Logs directory already exists. Nothing to create.' }; if (!(Test-Path -LiteralPath '$LOGS_PATH' -PathType Container)) { throw 'Logs directory was not created.' } else { Write-Host 'Logs directory verified.' }\""
       # ============================================================
       # Verify Required WinSW Files
       # ============================================================
