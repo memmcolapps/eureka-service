@@ -315,49 +315,95 @@ jobs:
       # Install or update Eureka Service
       #######################################################
       - name: Install or update Eureka Service
+        shell: bash
         run: |
-          ssh -i ~/.ssh/id_rsa \
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=no \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=10 \
-            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-            "powershell -NoProfile -NonInteractive -" <<'EOF'
-      
-            $ErrorActionPreference = 'Stop'
-      
-            $base = "C:\${{ secrets.WIN_LOCATION }}\eureka_service"
-            $wrapper = "$base\eureka-service.exe"
-      
-            if (!(Test-Path $wrapper)) {
-                throw "WinSW wrapper not found: $wrapper"
-            }
-      
-            Write-Host "Checking Eureka-Service..."
-      
-            $service = Get-Service -Name "Eureka-Service" -ErrorAction SilentlyContinue
-      
-            if (-not $service) {
-      
-                Write-Host "Eureka-Service does not exist."
-                Write-Host "Installing service..."
-      
-                Push-Location $base
-      
-                & $wrapper install
-      
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Failed to install Eureka-Service."
-                }
-      
-                Pop-Location
-      
-                Write-Host "Eureka-Service installed."
-            }
-            else {
-                Write-Host "Eureka-Service already exists."
-            }
-      
-            EOF
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}" \
+            "powershell -NoProfile -NonInteractive -Command \"& {
+              \$base = 'C:\${{ secrets.WIN_LOCATION }}\eureka_service'
+              \$wrapper = Join-Path \$base 'eureka-service.exe'
+              \$config = Join-Path \$base 'eureka-service.xml'
+
+              Write-Host 'Checking Eureka-Service...'
+
+              \$service = Get-Service -Name 'Eureka-Service' -ErrorAction SilentlyContinue
+
+              if (\$service) {
+                  Write-Host 'Eureka-Service exists. Stopping service...'
+                  & \$wrapper stop
+                  Start-Sleep -Seconds 3
+              }
+              else {
+                  Write-Host 'Eureka-Service does not exist.'
+              }
+
+              Write-Host 'Creating WinSW configuration...'
+
+              \$xml = @'
+                  <service>
+                  <id>Eureka-Service</id>
+                  <name>Eureka-Service</name>
+                  <description>Travana Eureka Service</description>
+                  
+                  <executable>java</executable>
+                  <arguments>-jar &quot;C:\${{ secrets.WIN_LOCATION }}\eureka_service\eureka-service.jar&quot;</arguments>
+                  
+                  <workingdirectory>C:\${{ secrets.WIN_LOCATION }}\eureka_service</workingdirectory>
+                  
+                  <logpath>C:\${{ secrets.WIN_LOCATION }}\eureka_service\logs</logpath>
+                  <log mode='roll'/>
+                  
+                  <onfailure action='restart' delay='10 sec'/>
+                  <onfailure action='restart' delay='30 sec'/>
+                  <onfailure action='restart' delay='60 sec'/>
+                  
+                  <startmode>Automatic</startmode>
+              </service>
+              '@
+        
+                \$xml | Set-Content -Path \$config -Encoding UTF8
+  
+                Write-Host 'Checking required files...'
+              
+              if (!(Test-Path \$wrapper)) {
+              throw \"WinSW wrapper not found: \$wrapper\"
+              }
+                
+                if (!(Test-Path \$config)) {
+                throw \"WinSW configuration not found: \$config\"
+              }
+                
+                if (!(Test-Path (Join-Path \$base 'eureka-service.jar'))) {
+                throw \"Eureka JAR not found.\"
+              }
+                
+                New-Item -ItemType Directory -Force -Path (Join-Path \$base 'logs') | Out-Null
+                
+                if (!(Get-Service -Name 'Eureka-Service' -ErrorAction SilentlyContinue)) {
+                Write-Host 'Installing service...'
+                
+                & \$wrapper install
+                
+                if (\$LASTEXITCODE -ne 0) {
+                throw 'Failed to install Eureka-Service.'
+              }
+              }
+                
+                Write-Host 'Starting Eureka-Service...'
+                
+                & \$wrapper start
+                
+                if (\$LASTEXITCODE -ne 0) {
+                throw 'Failed to start Eureka-Service.'
+              }
+                
+                Start-Sleep -Seconds 5
+                
+                Get-Service -Name 'Eureka-Service' | Format-Table Status, Name, DisplayName
+              }\""
 
       #######################################################
       # Stop service and backup current JAR
