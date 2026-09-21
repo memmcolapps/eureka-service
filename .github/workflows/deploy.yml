@@ -221,6 +221,8 @@ jobs:
           ssh-keygen -lf /tmp/github-actions.pub
 
           ssh-keyscan -H "${{ secrets.WINDOW_SERVER_HOST }}" >> ~/.ssh/known_hosts
+          
+
 #      - name: Configure SSH
 #        shell: bash
 #        run: |
@@ -230,6 +232,20 @@ jobs:
 #          chmod 600 ~/.ssh/id_rsa
 #
 #          ssh-keyscan ${{ secrets.WINDOW_SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Get SSH public key
+        shell: bash
+        run: |
+          printf '%s\n' "${{ secrets.WINDOW_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          ssh-keygen -y -f ~/.ssh/id_rsa > /tmp/github-actions.pub
+
+          echo "Public key:"
+          cat /tmp/github-actions.pub
+
+          echo "Fingerprint:"
+          ssh-keygen -lf /tmp/github-actions.pub
 
       - name: Test SSH authentication
         shell: bash
